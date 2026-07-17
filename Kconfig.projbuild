@@ -1,0 +1,11 @@
+menu "MicroTech Project Config"
+    choice BOARD_TYPE
+        prompt "Development Board"
+        default BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_8
+        help
+            Select the board to build for.
+        config BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_8
+            bool "Waveshare ESP32-S3-Touch-AMOLED-1.8"
+            depends on IDF_TARGET_ESP32S3
+    endchoice
+endmenu
