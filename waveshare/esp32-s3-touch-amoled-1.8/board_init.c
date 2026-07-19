@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 #include <time.h>
 
 #include "freertos/FreeRTOS.h"
@@ -9,8 +10,14 @@
 #include "esp_io_expander.h"
 
 #include "bsp_hal.h"
+#include "bsp_audio.h"
+#include "board_audio.h"
+#include "board_imu.h"
+#include "board_imu_bridge.h"
 #include "board_init.h"
 #include "board_tca9554.h"
+
+#include "esp_timer.h"
 
 #define DBG_TAG "board"
 #define DBG_LVL DBG_INFO
@@ -32,6 +39,250 @@ static board_context_t s_board =
     {
         .brightness = UINT8_MAX,
     },
+};
+
+static esp_err_t _power_poll_irq(uint32_t *status)
+{
+    if (status == NULL)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *status = 0U;
+    if (!board_power_is_available() || s_board.io_expander_device == NULL)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    board_power_irq_snapshot_t snapshot;
+    esp_err_t result = board_power_poll_irq(
+                           s_board.io_expander_device,
+                           (uint8_t)BOARD_EXIO_PIN_PMU_IRQ, &snapshot);
+    if (result == ESP_OK)
+    {
+        *status = snapshot.status;
+    }
+    return result;
+}
+
+static const bsp_power_ops_t s_power_ops =
+{
+    .is_available = board_power_is_available,
+    .get_info = board_power_get_info,
+    .poll_irq = _power_poll_irq,
+};
+
+static bool _imu_is_available(void)
+{
+    return board_imu_is_available(s_board.imu);
+}
+
+static esp_err_t _imu_read(bsp_imu_sample_t *sample)
+{
+    if (sample == NULL || !_imu_is_available())
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    board_imu_sample_t raw = {0};
+    esp_err_t result = board_imu_read(s_board.imu, &raw);
+    if (result != ESP_OK)
+    {
+        return result;
+    }
+
+    board_imu_bridge_sample(&raw, esp_timer_get_time(), sample);
+
+    bool interrupt_active = false;
+    if (board_imu_get_interrupt_level(s_board.imu, &interrupt_active) == ESP_OK)
+    {
+        sample->interrupt_active = interrupt_active;
+        sample->interrupt_level_valid = true;
+    }
+    return ESP_OK;
+}
+
+static esp_err_t _imu_set_enabled(bool enabled)
+{
+    return board_imu_set_enabled(s_board.imu, enabled);
+}
+
+static esp_err_t _imu_configure(uint32_t sample_rate_hz)
+{
+    return board_imu_set_sample_rate(s_board.imu, sample_rate_hz);
+}
+
+static bool _imu_get_data_ready(void)
+{
+    bool ready = false;
+    return board_imu_get_last_data_ready(s_board.imu, &ready) == ESP_OK &&
+           ready;
+}
+
+static esp_err_t _imu_get_interrupt_level(bool *active)
+{
+    return board_imu_get_interrupt_level(s_board.imu, active);
+}
+
+static const bsp_imu_ops_t s_imu_ops =
+{
+    .is_available = _imu_is_available,
+    .configure = _imu_configure,
+    .read = _imu_read,
+    .set_enabled = _imu_set_enabled,
+    .get_data_ready = _imu_get_data_ready,
+    .get_interrupt_level = _imu_get_interrupt_level,
+};
+
+static bool _audio_is_available(void)
+{
+    return bsp_audio_is_available();
+}
+
+static esp_err_t _audio_configure(const bsp_audio_config_t *config)
+{
+    return bsp_audio_configure(config);
+}
+
+static esp_err_t _audio_start(void)
+{
+    return bsp_audio_start();
+}
+
+static esp_err_t _audio_stop(void)
+{
+    return bsp_audio_stop();
+}
+
+static esp_err_t _audio_write(void *data, size_t size, size_t *written,
+                              uint32_t timeout_ms)
+{
+    return bsp_audio_write(data, size, written, timeout_ms);
+}
+
+static esp_err_t _audio_read(void *data, size_t size, size_t *read,
+                             uint32_t timeout_ms)
+{
+    return bsp_audio_read(data, size, read, timeout_ms);
+}
+
+static esp_err_t _audio_set_volume(uint8_t volume)
+{
+    return bsp_audio_set_volume(volume);
+}
+
+static uint8_t _audio_get_volume(void)
+{
+    uint8_t volume = 0;
+    (void)bsp_audio_get_volume(&volume);
+    return volume;
+}
+
+static esp_err_t _audio_set_mute(bool muted)
+{
+    return bsp_audio_set_mute(muted);
+}
+
+static bool _audio_get_mute(void)
+{
+    bool muted = false;
+    (void)bsp_audio_get_mute(&muted);
+    return muted;
+}
+
+static esp_err_t _audio_set_pa(bool enabled)
+{
+    return bsp_audio_set_pa(enabled);
+}
+
+static const bsp_audio_ops_t s_audio_ops =
+{
+    .is_available = _audio_is_available,
+    .configure = _audio_configure,
+    .start = _audio_start,
+    .stop = _audio_stop,
+    .write = _audio_write,
+    .read = _audio_read,
+    .set_volume = _audio_set_volume,
+    .get_volume = _audio_get_volume,
+    .set_mute = _audio_set_mute,
+    .get_mute = _audio_get_mute,
+    .set_pa = _audio_set_pa,
+};
+
+static bool _sd_is_available(void)
+{
+    return s_board.io_expander_device != NULL;
+}
+
+static esp_err_t _sd_mount(const bsp_sd_config_t *config)
+{
+    if (config == NULL || config->mount_point == NULL ||
+            config->mount_point[0] == '\0' ||
+            strlen(config->mount_point) >=
+            sizeof(((board_sdspi_config_t *)0)->mount_path))
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!_sd_is_available())
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (s_board.sd_card != NULL)
+    {
+        if (board_sdspi_is_mounted(s_board.sd_card))
+        {
+            return ESP_OK;
+        }
+        esp_err_t result = board_sdspi_unmount(s_board.sd_card);
+        if (result != ESP_OK)
+        {
+            return result;
+        }
+        s_board.sd_card = NULL;
+    }
+
+    board_sdspi_config_t sd_config;
+    board_sdspi_config_init(&sd_config);
+    sd_config.io_expander = s_board.io_expander_device;
+    memcpy(sd_config.mount_path, config->mount_point,
+           strlen(config->mount_point) + 1U);
+    sd_config.format_if_mount_failed = config->format_if_mount_failed;
+    sd_config.max_files = config->max_files;
+    sd_config.allocation_unit_size = config->allocation_unit_size;
+    return board_sdspi_mount(&sd_config, &s_board.sd_card);
+}
+
+static esp_err_t _sd_unmount(void)
+{
+    if (s_board.sd_card == NULL)
+    {
+        return ESP_OK;
+    }
+    esp_err_t result = board_sdspi_unmount(s_board.sd_card);
+    if (result == ESP_OK)
+    {
+        s_board.sd_card = NULL;
+    }
+    return result;
+}
+
+static bool _sd_is_mounted(void)
+{
+    return board_sdspi_is_mounted(s_board.sd_card);
+}
+
+static const char *_sd_get_mount_point(void)
+{
+    return board_sdspi_get_mount_path(s_board.sd_card);
+}
+
+static const bsp_sd_ops_t s_sd_ops =
+{
+    .is_available = _sd_is_available,
+    .mount = _sd_mount,
+    .unmount = _sd_unmount,
+    .is_mounted = _sd_is_mounted,
+    .get_mount_point = _sd_get_mount_point,
 };
 
 static esp_err_t _board_i2c_init(board_context_t *board)
@@ -88,6 +339,23 @@ static esp_err_t _board_io_expander_init(board_context_t *board)
         return result;
     }
 
+    result = esp_io_expander_set_dir(
+                 board->io_expander,
+                 BOARD_EXIO_PIN_RTC_INT | BOARD_EXIO_PIN_PMU_IRQ |
+                 BOARD_EXIO_PIN_IMU_INT,
+                 IO_EXPANDER_INPUT);
+    if (result != ESP_OK)
+    {
+        return result;
+    }
+
+    result = esp_io_expander_set_dir(
+                 board->io_expander, BOARD_EXIO_PIN_SD_CS, IO_EXPANDER_OUTPUT);
+    if (result != ESP_OK)
+    {
+        return result;
+    }
+
     result = esp_io_expander_set_level(
                  board->io_expander, BOARD_EXIO_PIN_LCD_RESET, 0);
     if (result != ESP_OK)
@@ -104,6 +372,15 @@ static esp_err_t _board_io_expander_init(board_context_t *board)
 
     result = esp_io_expander_set_level(
                  board->io_expander, BOARD_EXIO_PIN_TOUCH_RESET, 0);
+    if (result != ESP_OK)
+    {
+        return result;
+    }
+
+    /* EXIO7 is the active-low SD card chip select. Keep it deasserted until
+     * the SDSPI service owns a mount transaction. */
+    result = esp_io_expander_set_level(
+                 board->io_expander, BOARD_EXIO_PIN_SD_CS, 1);
     if (result != ESP_OK)
     {
         return result;
@@ -226,6 +503,16 @@ bsp_capabilities_t board_get_capabilities(void)
     return s_board.capabilities;
 }
 
+i2c_master_bus_handle_t board_get_i2c_bus(void)
+{
+    return s_board.i2c_bus;
+}
+
+board_tca9554_t *board_get_tca9554(void)
+{
+    return s_board.io_expander_device;
+}
+
 bsp_wakeup_descriptor_t board_get_wakeup_descriptor(void)
 {
     const uint64_t wake_mask = (1ULL << BOARD_HOME_KEY_GPIO);
@@ -241,6 +528,9 @@ static bool _board_has_resources(void)
 {
     return s_board.i2c_bus != NULL ||
            s_board.io_expander_device != NULL ||
+           s_board.imu != NULL ||
+           s_board.audio_initialized ||
+           s_board.sd_card != NULL ||
            s_board.display.port.panel != NULL ||
            s_board.display.port.panel_io != NULL ||
            s_board.display.port.touch != NULL ||
@@ -268,6 +558,9 @@ static esp_err_t _board_io_expander_deinit(board_context_t *board)
                            board->io_expander, BOARD_EXIO_PIN_LCD_RESET, 0);
     _board_record_cleanup_error(&first_error, result);
     result = esp_io_expander_set_level(
+                 board->io_expander, BOARD_EXIO_PIN_SD_CS, 1);
+    _board_record_cleanup_error(&first_error, result);
+    result = esp_io_expander_set_level(
                  board->io_expander, BOARD_EXIO_PIN_LCD_PWR_EN, 0);
     _board_record_cleanup_error(&first_error, result);
     result = esp_io_expander_set_level(
@@ -282,6 +575,29 @@ esp_err_t board_deinit(void)
     s_board.capabilities = BSP_CAPABILITY_NONE;
 
     esp_err_t first_error = ESP_OK;
+    if (s_board.sd_card != NULL)
+    {
+        esp_err_t result = _sd_unmount();
+        _board_record_cleanup_error(&first_error, result);
+    }
+    if (s_board.audio_initialized)
+    {
+        esp_err_t result = board_audio_deinit();
+        _board_record_cleanup_error(&first_error, result);
+        if (result == ESP_OK)
+        {
+            s_board.audio_initialized = false;
+        }
+    }
+    if (s_board.imu != NULL)
+    {
+        esp_err_t result = board_imu_destroy(s_board.imu);
+        _board_record_cleanup_error(&first_error, result);
+        if (result == ESP_OK)
+        {
+            s_board.imu = NULL;
+        }
+    }
     _board_record_cleanup_error(&first_error, board_power_deinit());
     _board_record_cleanup_error(&first_error, board_rtc_deinit());
     _board_record_cleanup_error(&first_error, board_display_deinit(&s_board));
@@ -291,13 +607,13 @@ esp_err_t board_deinit(void)
     {
         return first_error;
     }
-    const bool display_handles_released =
-        s_board.display.port.panel == NULL &&
-        s_board.display.port.panel_io == NULL &&
-        s_board.display.port.touch == NULL &&
-        s_board.display.port.touch_io == NULL;
+    const bool rtc_has_resources = board_rtc_has_resources();
+    const bool power_has_resources = board_power_has_resources();
+    const bool io_expander_dependents_released =
+        _board_io_expander_dependents_released(&s_board,
+            rtc_has_resources);
     bool io_outputs_released = false;
-    if (display_handles_released)
+    if (io_expander_dependents_released)
     {
         esp_err_t ret = _board_io_expander_deinit(&s_board);
         _board_record_cleanup_error(&first_error, ret);
@@ -305,7 +621,7 @@ esp_err_t board_deinit(void)
     }
 
     if (s_board.io_expander_device != NULL &&
-            display_handles_released && io_outputs_released)
+            io_expander_dependents_released && io_outputs_released)
     {
         esp_err_t ret = board_tca9554_destroy(s_board.io_expander_device);
         _board_record_cleanup_error(&first_error, ret);
@@ -316,9 +632,9 @@ esp_err_t board_deinit(void)
         }
     }
 
-    if (s_board.i2c_bus != NULL && s_board.io_expander_device == NULL &&
-            s_board.display.port.touch == NULL &&
-            s_board.display.port.touch_io == NULL)
+    if (s_board.i2c_bus != NULL &&
+            _board_i2c_dependents_released(&s_board, rtc_has_resources,
+                                           power_has_resources))
     {
         esp_err_t ret = i2c_del_master_bus(s_board.i2c_bus);
         _board_record_cleanup_error(&first_error, ret);
@@ -380,7 +696,9 @@ static void _board_init_optional_resources(void)
     esp_err_t result = board_init_stage_gate(BOARD_INIT_STAGE_RTC);
     if (result == ESP_OK)
     {
-        result = board_rtc_init(s_board.i2c_bus);
+        result = board_rtc_init(s_board.i2c_bus,
+                                s_board.io_expander_device,
+                                (uint8_t)BOARD_EXIO_PIN_RTC_INT);
     }
     if (result != ESP_OK)
     {
@@ -404,6 +722,63 @@ static void _board_init_optional_resources(void)
     {
         s_board.capabilities |= BSP_CAPABILITY_POWER;
     }
+
+    result = board_init_stage_gate(BOARD_INIT_STAGE_IMU);
+    if (result == ESP_OK)
+    {
+        board_imu_config_t imu_config;
+        board_imu_config_default(&imu_config);
+        result = board_imu_create(s_board.i2c_bus, s_board.io_expander,
+                                  &imu_config, &s_board.imu);
+    }
+    if (result != ESP_OK)
+    {
+        LOG_W("imu init failed: %s", esp_err_to_name(result));
+        if (s_board.imu != NULL)
+        {
+            const esp_err_t cleanup_result = board_imu_destroy(s_board.imu);
+            if (cleanup_result == ESP_OK)
+            {
+                s_board.imu = NULL;
+            }
+            else
+            {
+                LOG_W("imu cleanup failed: %s",
+                      esp_err_to_name(cleanup_result));
+            }
+        }
+    }
+    else
+    {
+        s_board.capabilities |= BSP_CAPABILITY_IMU;
+    }
+
+    result = board_init_stage_gate(BOARD_INIT_STAGE_AUDIO);
+    if (result == ESP_OK)
+    {
+        result = board_audio_init(s_board.i2c_bus);
+    }
+    if (result != ESP_OK)
+    {
+        LOG_W("audio init failed: %s", esp_err_to_name(result));
+        const esp_err_t cleanup_result = board_audio_deinit();
+        s_board.audio_initialized = cleanup_result != ESP_OK;
+        if (cleanup_result != ESP_OK)
+        {
+            LOG_W("audio cleanup failed: %s",
+                  esp_err_to_name(cleanup_result));
+        }
+    }
+    else
+    {
+        s_board.audio_initialized = true;
+        s_board.capabilities |= BSP_CAPABILITY_AUDIO;
+    }
+
+    if (s_board.io_expander_device != NULL)
+    {
+        s_board.capabilities |= BSP_CAPABILITY_SD;
+    }
 }
 
 static esp_err_t _board_register_interfaces(void)
@@ -419,15 +794,41 @@ static esp_err_t _board_register_interfaces(void)
         return result;
     }
 
-    const bsp_display_port_t port =
+    if ((s_board.capabilities & BSP_CAPABILITY_POWER) != 0)
     {
-        .width = BOARD_LCD_HOR_RES,
-        .height = BOARD_LCD_VER_RES,
-        .panel = s_board.display.port.panel,
-        .panel_io = s_board.display.port.panel_io,
-        .touch = s_board.display.port.touch,
-        .touch_io = s_board.display.port.touch_io,
-    };
+        result = bsp_hal_register_power(&s_power_ops);
+        if (result != ESP_OK)
+        {
+            return result;
+        }
+    }
+
+    if ((s_board.capabilities & BSP_CAPABILITY_IMU) != 0U)
+    {
+        result = bsp_hal_register_imu(&s_imu_ops);
+        if (result != ESP_OK)
+        {
+            return result;
+        }
+    }
+    if ((s_board.capabilities & BSP_CAPABILITY_AUDIO) != 0U)
+    {
+        result = bsp_hal_register_audio(&s_audio_ops);
+        if (result != ESP_OK)
+        {
+            return result;
+        }
+    }
+    if ((s_board.capabilities & BSP_CAPABILITY_SD) != 0)
+    {
+        result = bsp_hal_register_sd(&s_sd_ops);
+        if (result != ESP_OK)
+        {
+            return result;
+        }
+    }
+
+    const bsp_display_port_t port = s_board.display.port;
     result = board_init_stage_gate(BOARD_INIT_STAGE_DISPLAY_PORT);
     if (result == ESP_OK)
     {

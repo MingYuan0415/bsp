@@ -31,7 +31,9 @@
 #define LCD_SPI_PIN_DATA1               (GPIO_NUM_5)
 #define LCD_SPI_PIN_DATA2               (GPIO_NUM_6)
 #define LCD_SPI_PIN_DATA3               (GPIO_NUM_7)
+#define LCD_TE_PIN                       (GPIO_NUM_13)
 #define LCD_SPI_PIXEL_CLOCK_HZ          (60 * 1000 * 1000)
+#define LCD_SPI_DATA_LINES              (4)
 #define LCD_SPI_TRANS_QUEUE_DEPTH       (8)
 #define LCD_SPI_MAX_TRANSFER_LINES      (60)
 
@@ -40,6 +42,7 @@
 #define LCD_PWR_RESET_HOLD_MS           (10)
 #define LCD_PWR_RESET_RELEASE_MS        (120)
 #define LCD_PWR_STABLE_DELAY_MS         (10)
+#define LCD_SCANOUT_START_DELAY_MS      (10)
 #define LCD_DISP_OFF_SETTLE_MS          (20)
 #define LCD_QSPI_OPCODE_WRITE_CMD       (0x02U)
 #define LCD_QSPI_CMD(cmd)               ((((cmd) & 0xFF) << 8) | \
@@ -52,6 +55,12 @@
 #define FT5X06_REG_CHIP_ID              (0xA3)
 #define FT5X06_REG_POWER_MODE           (0xA5)
 #define FT5X06_POWER_MODE_HIBERNATE     (3)
+
+#if defined(CONFIG_BSP_DISPLAY_TE_SYNC) && CONFIG_BSP_DISPLAY_TE_SYNC
+    #define LCD_TE_SYNC_ENABLED             (true)
+#else
+    #define LCD_TE_SYNC_ENABLED             (false)
+#endif
 
 #if CONFIG_LV_COLOR_DEPTH == 32
     #define LCD_BIT_PER_PIXEL               (24)
@@ -72,7 +81,6 @@ static const sh8601_lcd_init_cmd_t s_lcd_init_cmds[] =
     {0x2A, (uint8_t[]){0x00, 0x00, 0x01, 0x6F}, 4, 0},
     {0x2B, (uint8_t[]){0x00, 0x00, 0x01, 0xBF}, 4, 0},
     {0x51, (uint8_t[]){0x00}, 1, 10},
-    {0x51, (uint8_t[]){0xFF}, 1, 0},
 };
 
 typedef struct ft5x06_config_entry
@@ -193,6 +201,10 @@ static esp_err_t _board_lcd_bus_init(board_context_t *board)
         SH8601_PANEL_IO_QSPI_CONFIG(LCD_SPI_PIN_CS, NULL, NULL);
     io_config.pclk_hz = LCD_SPI_PIXEL_CLOCK_HZ;
     io_config.trans_queue_depth = LCD_SPI_TRANS_QUEUE_DEPTH;
+    /* Direct PSRAM DMA is reserved for TE's single full-frame path. In
+     * partial mode, the short internal bounce transaction avoids PSRAM/MSPI
+     * contention at the LCD clock rate. */
+    io_config.flags.psram_dma_direct = LCD_TE_SYNC_ENABLED;
 
     if (result == ESP_OK)
     {
@@ -262,6 +274,32 @@ static esp_err_t _board_lcd_init(board_context_t *board)
     return result;
 }
 
+static esp_err_t _board_display_start_scanout(board_context_t *board)
+{
+    if (board == NULL || board->display.port.panel == NULL ||
+            !board->display.rail_on || !board->display.panel_initialized)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (board->display.scanout_on)
+    {
+        return ESP_OK;
+    }
+
+    const esp_err_t result = esp_lcd_panel_disp_on_off(
+                                 board->display.port.panel, true);
+    if (result == ESP_OK)
+    {
+        board->display.scanout_on = true;
+        board->display.brightness_applied = false;
+        board->display.enabled = false;
+        board->display.power_phase =
+            BOARD_DISPLAY_POWER_PHASE_SCANOUT_HIDDEN;
+        vTaskDelay(pdMS_TO_TICKS(LCD_SCANOUT_START_DELAY_MS));
+    }
+    return result;
+}
+
 static esp_err_t _board_touch_init(board_context_t *board)
 {
     esp_err_t result = ESP_OK;
@@ -312,15 +350,17 @@ esp_err_t board_display_init(board_context_t *board)
 
     board->display.port.width = BOARD_LCD_HOR_RES;
     board->display.port.height = BOARD_LCD_VER_RES;
+    board->display.port.te = (bsp_display_te_config_t)
+    {
+        .enabled = LCD_TE_SYNC_ENABLED,
+        .gpio_num = LCD_TE_PIN,
+        .bus_freq_hz = LCD_SPI_PIXEL_CLOCK_HZ,
+        .data_lines = LCD_SPI_DATA_LINES,
+        .bits_per_pixel = LCD_BIT_PER_PIXEL,
+        .intr_type = GPIO_INTR_POSEDGE,
+    };
 
     result = _board_lcd_init(board);
-    if (result != ESP_OK)
-    {
-        (void)board_display_deinit(board);
-        return result;
-    }
-
-    result = _board_touch_init(board);
     if (result != ESP_OK)
     {
         (void)board_display_deinit(board);
@@ -332,17 +372,32 @@ esp_err_t board_display_init(board_context_t *board)
     board->display.reset_released = true;
     board->display.panel_reset = true;
     board->display.panel_initialized = true;
+    board->display.scanout_on = false;
     board->display.brightness_applied = false;
     board->display.enabled = false;
     board->display.brightness = board->settings.brightness;
+
+    result = _board_touch_init(board);
+    if (result != ESP_OK)
+    {
+        (void)board_display_deinit(board);
+        return result;
+    }
+
+    result = gpio_intr_disable(BOARD_I2C_PIN_INT);
+    if (result != ESP_OK)
+    {
+        (void)board_display_deinit(board);
+        return result;
+    }
+
     board->display.screen_phase = BOARD_SCREEN_PHASE_TOUCH_CONFIGURED;
     board->display.touch_irq_enabled = false;
     board->display.touch_hibernated = false;
     board->display.touch_reset_released = true;
     board->display.touch_configured = true;
 
-    result = board_display_set_brightness_impl(
-                 board, board->settings.brightness);
+    result = _board_display_start_scanout(board);
     if (result != ESP_OK)
     {
         (void)board_display_deinit(board);
@@ -353,21 +408,27 @@ esp_err_t board_display_init(board_context_t *board)
 esp_err_t board_display_set_brightness_impl(board_context_t *board,
         uint8_t brightness)
 {
-    esp_err_t result = ESP_ERR_INVALID_STATE;
     if (board == NULL || board->display.port.panel_io == NULL)
     {
-        return result;
+        return ESP_ERR_INVALID_STATE;
     }
 
-    if (!board->display.rail_on || !board->display.panel_initialized)
+    if (!board->display.rail_on || !board->display.panel_initialized ||
+            !board->display.scanout_on || !board->display.enabled)
     {
         board->display.brightness = brightness;
         board->display.brightness_applied = false;
+        if (board->display.scanout_on)
+        {
+            board->display.power_phase =
+                BOARD_DISPLAY_POWER_PHASE_SCANOUT_HIDDEN;
+        }
         return ESP_OK;
     }
 
-    result = _board_lcd_tx_param_8b(board, LCD_CMD_WRCTRLD,
-                                    LCD_WRCTRLD_BCTRL_BIT);
+    esp_err_t result = _board_lcd_tx_param_8b(
+                           board, LCD_CMD_WRCTRLD,
+                           LCD_WRCTRLD_BCTRL_BIT);
     if (result != ESP_OK)
     {
         return result;
@@ -378,26 +439,43 @@ esp_err_t board_display_set_brightness_impl(board_context_t *board,
     {
         board->display.brightness = brightness;
         board->display.brightness_applied = true;
-        board->display.power_phase = board->display.enabled ?
-                                     BOARD_DISPLAY_POWER_PHASE_ENABLED :
-                                     BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED;
+        board->display.power_phase = BOARD_DISPLAY_POWER_PHASE_ENABLED;
+    }
+    return result;
+}
+
+static esp_err_t _board_display_hide_scanout(board_context_t *board)
+{
+    esp_err_t result = _board_lcd_tx_param_8b(
+                           board, LCD_CMD_WRCTRLD,
+                           LCD_WRCTRLD_BCTRL_BIT);
+    if (result == ESP_OK)
+    {
+        result = _board_lcd_tx_param_8b(board, LCD_CMD_WRDISBV, 0);
+    }
+    if (result == ESP_OK)
+    {
+        board->display.brightness_applied = false;
+        board->display.enabled = false;
+        board->display.power_phase = board->display.scanout_on ?
+                                     BOARD_DISPLAY_POWER_PHASE_SCANOUT_HIDDEN :
+                                     BOARD_DISPLAY_POWER_PHASE_PANEL_INITIALIZED;
     }
     return result;
 }
 
 esp_err_t board_display_set_enabled_impl(board_context_t *board, bool on)
 {
-    esp_err_t result = ESP_ERR_INVALID_STATE;
     if (board == NULL || board->display.port.panel == NULL)
     {
-        return result;
+        return ESP_ERR_INVALID_STATE;
     }
 
     if (on && (!board->display.rail_on ||
                !board->display.panel_initialized ||
-               !board->display.brightness_applied))
+               !board->display.scanout_on))
     {
-        return result;
+        return ESP_ERR_INVALID_STATE;
     }
 
     if (board->display.enabled == on)
@@ -405,19 +483,29 @@ esp_err_t board_display_set_enabled_impl(board_context_t *board, bool on)
         return ESP_OK;
     }
 
-    result = esp_lcd_panel_disp_on_off(board->display.port.panel, on);
+    if (!on)
+    {
+        return _board_display_hide_scanout(board);
+    }
+
+    esp_err_t result = _board_lcd_tx_param_8b(
+                           board, LCD_CMD_WRCTRLD,
+                           LCD_WRCTRLD_BCTRL_BIT);
     if (result == ESP_OK)
     {
-        board->display.enabled = on;
-        if (on)
-        {
-            board->display.power_phase = BOARD_DISPLAY_POWER_PHASE_ENABLED;
-        }
-        else if (board->display.brightness_applied)
-        {
-            board->display.power_phase =
-                BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED;
-        }
+        result = _board_lcd_tx_param_8b(
+                     board, LCD_CMD_WRDISBV,
+                     board->display.brightness);
+    }
+    if (result == ESP_OK)
+    {
+        board->display.brightness_applied = true;
+        board->display.enabled = true;
+        board->display.power_phase = BOARD_DISPLAY_POWER_PHASE_ENABLED;
+    }
+    else
+    {
+        (void)_board_display_hide_scanout(board);
     }
     return result;
 }
@@ -432,6 +520,7 @@ static esp_err_t _board_display_power_rail_on(board_context_t *board)
         board->display.reset_released = false;
         board->display.panel_reset = false;
         board->display.panel_initialized = false;
+        board->display.scanout_on = false;
         board->display.brightness_applied = false;
         board->display.enabled = false;
         board->display.power_phase = BOARD_DISPLAY_POWER_PHASE_RAIL_ON;
@@ -449,6 +538,7 @@ static esp_err_t _board_display_assert_reset(board_context_t *board)
         board->display.reset_released = false;
         board->display.panel_reset = false;
         board->display.panel_initialized = false;
+        board->display.scanout_on = false;
         board->display.brightness_applied = false;
         board->display.enabled = false;
         board->display.power_phase = BOARD_DISPLAY_POWER_PHASE_RESET_ASSERTED;
@@ -488,6 +578,9 @@ static esp_err_t _board_display_init_panel(board_context_t *board)
     if (result == ESP_OK)
     {
         board->display.panel_initialized = true;
+        board->display.scanout_on = false;
+        board->display.brightness_applied = false;
+        board->display.enabled = false;
         board->display.power_phase =
             BOARD_DISPLAY_POWER_PHASE_PANEL_INITIALIZED;
     }
@@ -531,14 +624,13 @@ static esp_err_t _board_display_prepare_power_impl(board_context_t *board)
     if (result == ESP_OK && board->display.power_phase ==
             BOARD_DISPLAY_POWER_PHASE_PANEL_INITIALIZED)
     {
-        result = board_display_set_brightness_impl(
-                     board, board->settings.brightness);
+        result = _board_display_start_scanout(board);
     }
 
     if (result == ESP_OK &&
             board->display.power_phase != BOARD_DISPLAY_POWER_PHASE_ENABLED &&
             board->display.power_phase !=
-            BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED)
+            BOARD_DISPLAY_POWER_PHASE_SCANOUT_HIDDEN)
     {
         result = ESP_ERR_INVALID_STATE;
     }
@@ -582,7 +674,7 @@ static void _board_display_restore_after_off_failure(board_context_t *board)
             board->display.touch_reset_released &&
             board->display.touch_configured &&
             !board->display.touch_irq_enabled && board->display.rail_on &&
-            board->display.panel_initialized)
+            board->display.panel_initialized && board->display.enabled)
     {
         if (gpio_intr_enable(BOARD_I2C_PIN_INT) == ESP_OK)
         {
@@ -602,22 +694,43 @@ static void _board_display_mark_power_off(board_context_t *board)
     board->display.reset_released = false;
     board->display.panel_reset = false;
     board->display.panel_initialized = false;
+    board->display.scanout_on = false;
     board->display.brightness_applied = false;
     board->display.enabled = false;
     board->display.power_phase = BOARD_DISPLAY_POWER_PHASE_OFF;
+}
+
+static esp_err_t _board_display_stop_scanout(board_context_t *board)
+{
+    if (!board->display.scanout_on)
+    {
+        return ESP_OK;
+    }
+
+    const esp_err_t result = esp_lcd_panel_disp_on_off(
+                                 board->display.port.panel, false);
+    if (result == ESP_OK)
+    {
+        board->display.scanout_on = false;
+        board->display.brightness_applied = false;
+        board->display.enabled = false;
+        board->display.power_phase =
+            BOARD_DISPLAY_POWER_PHASE_PANEL_INITIALIZED;
+    }
+    return result;
 }
 
 static esp_err_t _board_display_power_off(board_context_t *board)
 {
     esp_err_t result = ESP_OK;
     if (board->display.power_phase == BOARD_DISPLAY_POWER_PHASE_OFF &&
-            !board->display.rail_on)
+            !board->display.rail_on && !board->display.scanout_on)
     {
         board->display.enabled = false;
         return result;
     }
 
-    result = board_display_set_enabled_impl(board, false);
+    result = _board_display_stop_scanout(board);
     if (result != ESP_OK)
     {
         /* DISP_OFF failure must not leave the input side hibernated. */
@@ -809,13 +922,13 @@ static void _board_display_hide_after_commit_failure(board_context_t *board,
     }
 
     if (board->display.rail_on && board->display.panel_initialized &&
-            esp_lcd_panel_disp_on_off(
-                board->display.port.panel, false) == ESP_OK)
+            board->display.scanout_on)
     {
-        board->display.enabled = false;
-        board->display.power_phase = board->display.brightness_applied ?
-                                     BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED :
-                                     BOARD_DISPLAY_POWER_PHASE_PANEL_INITIALIZED;
+        if (board->display.enabled || board->display.brightness_applied)
+        {
+            (void)_board_display_hide_scanout(board);
+        }
+        (void)_board_display_stop_scanout(board);
     }
 }
 
@@ -889,8 +1002,10 @@ esp_err_t board_display_resume_prepare_impl(board_context_t *board)
 
     if (board->display.screen_phase == BOARD_SCREEN_PHASE_TOUCH_CONFIGURED &&
             board->display.power_phase ==
-            BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED &&
-            !board->display.enabled && !board->display.touch_irq_enabled)
+            BOARD_DISPLAY_POWER_PHASE_SCANOUT_HIDDEN &&
+            board->display.scanout_on && !board->display.enabled &&
+            !board->display.brightness_applied &&
+            !board->display.touch_irq_enabled)
     {
         return ESP_OK;
     }
@@ -919,11 +1034,16 @@ esp_err_t board_display_resume_commit_impl(board_context_t *board)
     }
 
     if (board->display.screen_phase == BOARD_SCREEN_PHASE_ACTIVE &&
-            board->display.enabled && board->display.touch_irq_enabled)
+            board->display.scanout_on && board->display.enabled &&
+            board->display.touch_irq_enabled)
     {
         return ESP_OK;
     }
     if (board->display.screen_phase != BOARD_SCREEN_PHASE_TOUCH_CONFIGURED ||
+            board->display.power_phase !=
+            BOARD_DISPLAY_POWER_PHASE_SCANOUT_HIDDEN ||
+            !board->display.scanout_on || board->display.enabled ||
+            board->display.brightness_applied ||
             board->display.touch_irq_enabled)
     {
         return result;
@@ -1038,6 +1158,7 @@ esp_err_t board_display_deinit(board_context_t *board)
     first_error = ESP_OK;
     if (board->display.port.panel != NULL && board->io_expander != NULL &&
             (board->display.rail_on ||
+             board->display.scanout_on ||
              board->display.power_phase != BOARD_DISPLAY_POWER_PHASE_OFF))
     {
         first_error = board_display_set_power_impl(board, false);

@@ -2,6 +2,7 @@
 #define __BSP_HAL_H__
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <time.h>
 
@@ -13,7 +14,18 @@
 extern "C" {
 #endif
 
-/** @brief LCD and touch handles exported to the UI adapter. */
+/** @brief Physical tearing-effect synchronization parameters. */
+typedef struct bsp_display_te_config
+{
+    bool enabled;           /**< Whether the panel TE signal is wired. */
+    int gpio_num;           /**< ESP GPIO carrying the panel TE signal. */
+    uint32_t bus_freq_hz;   /**< Display transport clock in hertz. */
+    uint8_t data_lines;     /**< Parallel transport data-line count. */
+    uint8_t bits_per_pixel; /**< Physical panel color depth. */
+    int intr_type;          /**< GPIO interrupt type for the TE edge. */
+} bsp_display_te_config_t;
+
+/** @brief LCD, touch, and synchronization data exported to the UI adapter. */
 typedef struct bsp_display_port
 {
     uint16_t width;                        /**< Horizontal resolution. */
@@ -22,6 +34,7 @@ typedef struct bsp_display_port
     esp_lcd_panel_io_handle_t panel_io;    /**< LCD transport handle. */
     esp_lcd_touch_handle_t touch;          /**< Touch controller handle. */
     esp_lcd_panel_io_handle_t touch_io;    /**< Touch transport handle. */
+    bsp_display_te_config_t te;             /**< Physical TE configuration. */
 } bsp_display_port_t;
 
 /** @brief Display dimensions available without exposing device handles. */
@@ -45,6 +58,41 @@ typedef struct bsp_power_info
     uint16_t system_voltage_mv;  /**< System rail millivolts. */
 } bsp_power_info_t;
 
+/** @brief One synchronized QMI8658C IMU sample. */
+typedef struct bsp_imu_sample
+{
+    int64_t timestamp_us;       /**< Monotonic sample timestamp. */
+    uint32_t sequence;          /**< Incrementing sample sequence. */
+    float accel_mps2[3];        /**< Acceleration on X/Y/Z axes. */
+    float gyro_dps[3];          /**< Angular rate on X/Y/Z axes. */
+    float temperature_c;        /**< Sensor temperature in degrees Celsius. */
+    uint32_t sensor_timestamp;  /**< Sensor-native 24-bit timestamp. */
+    uint8_t status_int;         /**< Sensor interrupt status register. */
+    uint8_t status0;            /**< Sensor status register 0. */
+    uint8_t status1;            /**< Sensor status register 1. */
+    bool data_ready;            /**< Whether the sample came from a ready edge. */
+    bool interrupt_active;      /**< Optional TCA9554 INT1 level. */
+    bool interrupt_level_valid; /**< Whether interrupt_active is valid. */
+} bsp_imu_sample_t;
+
+/** @brief Audio stream format used by the board codec. */
+typedef struct bsp_audio_config
+{
+    uint32_t sample_rate_hz;    /**< Sample rate in hertz. */
+    uint8_t bits_per_sample;    /**< PCM sample width. */
+    uint8_t channels;           /**< Number of interleaved channels. */
+    uint16_t mclk_multiple;     /**< MCLK multiple of the sample rate. */
+} bsp_audio_config_t;
+
+/** @brief Removable SD filesystem mount settings. */
+typedef struct bsp_sd_config
+{
+    const char *mount_point;          /**< VFS mount path. */
+    bool format_if_mount_failed;      /**< Allow destructive format recovery. */
+    int max_files;                    /**< Maximum simultaneously open files. */
+    size_t allocation_unit_size;      /**< FAT allocation unit when formatting. */
+} bsp_sd_config_t;
+
 /** @brief Transactional BSP lifecycle state. */
 typedef enum
 {
@@ -67,6 +115,9 @@ enum
     BSP_CAPABILITY_INPUT = (1U << 2),
     BSP_CAPABILITY_RTC = (1U << 3),
     BSP_CAPABILITY_POWER = (1U << 4),
+    BSP_CAPABILITY_IMU = (1U << 5),
+    BSP_CAPABILITY_AUDIO = (1U << 6),
+    BSP_CAPABILITY_SD = (1U << 7),
 };
 
 /** @brief Logical board keys. */
@@ -121,12 +172,39 @@ typedef struct bsp_screen_ops
     esp_err_t (*set_power)(bool on); /**< Change LCD-only power state. */
 } bsp_screen_ops_t;
 
+/** @brief Calendar fields compared by the board RTC alarm. */
+typedef struct bsp_rtc_alarm_config
+{
+    bool match_second; /**< Compare second when true. */
+    uint8_t second;    /**< Second in the range 0 through 59. */
+    bool match_minute; /**< Compare minute when true. */
+    uint8_t minute;    /**< Minute in the range 0 through 59. */
+    bool match_hour;   /**< Compare hour when true. */
+    uint8_t hour;      /**< Hour in the range 0 through 23. */
+    bool match_day;    /**< Compare day of month when true. */
+    uint8_t day;       /**< Day of month in the range 1 through 31. */
+    bool match_weekday; /**< Compare weekday when true. */
+    uint8_t weekday;    /**< Weekday in the range 0 through 6. */
+} bsp_rtc_alarm_config_t;
+
+/** @brief Board RTC alarm control and latched-flag state. */
+typedef struct bsp_rtc_alarm_status
+{
+    bool enabled; /**< Alarm interrupt generation is enabled. */
+    bool pending; /**< Alarm flag is latched and awaiting a clear. */
+} bsp_rtc_alarm_status_t;
+
 /** @brief Board RTC operations. */
 typedef struct bsp_rtc_ops
 {
     bool (*is_available)(void);             /**< Report RTC availability. */
     esp_err_t (*read)(struct tm *timeinfo); /**< Read validated RTC time. */
     esp_err_t (*write)(const struct tm *timeinfo); /**< Write RTC time. */
+    esp_err_t (*alarm_configure)(const bsp_rtc_alarm_config_t *config); /**< Arm alarm. */
+    esp_err_t (*alarm_disable)(void); /**< Disable and clear alarm. */
+    esp_err_t (*alarm_get_status)(bsp_rtc_alarm_status_t *status); /**< Read alarm. */
+    esp_err_t (*alarm_clear)(void); /**< Clear alarm pending flag. */
+    esp_err_t (*alarm_poll_interrupt)(bool *active); /**< Poll active-low RTC_INT. */
 } bsp_rtc_ops_t;
 
 /** @brief Board PMU operations. */
@@ -134,7 +212,47 @@ typedef struct bsp_power_ops
 {
     bool (*is_available)(void); /**< Report PMU availability. */
     esp_err_t (*get_info)(bsp_power_info_t *info); /**< Read telemetry. */
+    esp_err_t (*poll_irq)(uint32_t *status); /**< Consume latched PMU IRQs. */
 } bsp_power_ops_t;
+
+/** @brief Board IMU operations. */
+typedef struct bsp_imu_ops
+{
+    bool (*is_available)(void); /**< Report IMU availability. */
+    esp_err_t (*configure)(uint32_t sample_rate_hz); /**< Set sensor ODR. */
+    esp_err_t (*read)(bsp_imu_sample_t *sample); /**< Read one sample. */
+    esp_err_t (*set_enabled)(bool enabled); /**< Enable or suspend sampling. */
+    bool (*get_data_ready)(void); /**< Read the last data-ready level. */
+    esp_err_t (*get_interrupt_level)(bool *active); /**< Read EXIO6 INT1. */
+} bsp_imu_ops_t;
+
+/** @brief Board audio operations. */
+typedef struct bsp_audio_ops
+{
+    bool (*is_available)(void); /**< Report codec availability. */
+    esp_err_t (*configure)(const bsp_audio_config_t *config); /**< Set format. */
+    esp_err_t (*start)(void); /**< Enable full-duplex streaming. */
+    esp_err_t (*stop)(void); /**< Disable full-duplex streaming. */
+    esp_err_t (*write)(void *data, size_t size, size_t *written,
+                       uint32_t timeout_ms); /**< Write PCM frames. */
+    esp_err_t (*read)(void *data, size_t size, size_t *read,
+                      uint32_t timeout_ms); /**< Read PCM frames. */
+    esp_err_t (*set_volume)(uint8_t volume); /**< Set output volume. */
+    uint8_t (*get_volume)(void); /**< Return output volume. */
+    esp_err_t (*set_mute)(bool muted); /**< Set output mute. */
+    bool (*get_mute)(void); /**< Return output mute. */
+    esp_err_t (*set_pa)(bool enabled); /**< Set NS4150B power amplifier. */
+} bsp_audio_ops_t;
+
+/** @brief Board SD card operations. */
+typedef struct bsp_sd_ops
+{
+    bool (*is_available)(void); /**< Report SD wiring availability. */
+    esp_err_t (*mount)(const bsp_sd_config_t *config); /**< Mount the card. */
+    esp_err_t (*unmount)(void); /**< Unmount the card. */
+    bool (*is_mounted)(void); /**< Report current mount state. */
+    const char *(*get_mount_point)(void); /**< Return the active mount path. */
+} bsp_sd_ops_t;
 
 /** @brief Board input registration and sleep-handshake operations. */
 typedef struct bsp_input_ops
@@ -246,6 +364,15 @@ esp_err_t bsp_hal_register_rtc(const bsp_rtc_ops_t *ops);
  */
 esp_err_t bsp_hal_register_power(const bsp_power_ops_t *ops);
 
+/** @brief Register complete IMU operations during BSP initialization. */
+esp_err_t bsp_hal_register_imu(const bsp_imu_ops_t *ops);
+
+/** @brief Register complete audio operations during BSP initialization. */
+esp_err_t bsp_hal_register_audio(const bsp_audio_ops_t *ops);
+
+/** @brief Register complete SD operations during BSP initialization. */
+esp_err_t bsp_hal_register_sd(const bsp_sd_ops_t *ops);
+
 /**
  * @brief Register complete input operations during BSP initialization.
  *
@@ -290,6 +417,15 @@ const bsp_rtc_ops_t *bsp_hal_get_rtc(void);
  *          after deinitialization begins.
  */
 const bsp_power_ops_t *bsp_hal_get_power(void);
+
+/** @brief Return committed IMU operations. */
+const bsp_imu_ops_t *bsp_hal_get_imu(void);
+
+/** @brief Return committed audio operations. */
+const bsp_audio_ops_t *bsp_hal_get_audio(void);
+
+/** @brief Return committed SD operations. */
+const bsp_sd_ops_t *bsp_hal_get_sd(void);
 
 /**
  * @brief Return committed input operations.

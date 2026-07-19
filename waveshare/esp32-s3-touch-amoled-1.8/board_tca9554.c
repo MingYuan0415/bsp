@@ -78,6 +78,92 @@ esp_err_t board_tca9554_read_inputs(board_tca9554_t *device, uint8_t *value)
     return _board_tca9554_read_register(device, BOARD_TCA9554_REG_INPUT, value);
 }
 
+esp_err_t board_tca9554_set_output_level(board_tca9554_t *device,
+        uint8_t pin_mask,
+        uint8_t level)
+{
+    if (device == NULL || device->i2c_device == NULL || device->lock == NULL ||
+            pin_mask == 0U || (level != 0U && level != 1U))
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    if ((device->direction & pin_mask) != 0U)
+    {
+        xSemaphoreGive(device->lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    const uint8_t next_output = level != 0U ?
+                                (uint8_t)(device->output | pin_mask) :
+                                (uint8_t)(device->output & (uint8_t)~pin_mask);
+    esp_err_t result = ESP_OK;
+    if (next_output != device->output)
+    {
+        const uint8_t data[] = {BOARD_TCA9554_REG_OUTPUT, next_output};
+        result = i2c_master_transmit(device->i2c_device,
+                                     data,
+                                     sizeof(data),
+                                     BOARD_TCA9554_I2C_TIMEOUT_MS);
+        if (result == ESP_OK)
+        {
+            device->output = next_output;
+        }
+    }
+    xSemaphoreGive(device->lock);
+    return result;
+}
+
+esp_err_t board_tca9554_set_direction(board_tca9554_t *device,
+                                      uint8_t pin_mask,
+                                      bool output)
+{
+    if (device == NULL || device->i2c_device == NULL || device->lock == NULL ||
+            pin_mask == 0U)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    const uint8_t next_direction = output ?
+                                   (uint8_t)(device->direction & (uint8_t)~pin_mask) :
+                                   (uint8_t)(device->direction | pin_mask);
+    esp_err_t result = ESP_OK;
+    if (next_direction != device->direction)
+    {
+        const uint8_t data[] = {BOARD_TCA9554_REG_DIRECTION, next_direction};
+        result = i2c_master_transmit(device->i2c_device,
+                                     data,
+                                     sizeof(data),
+                                     BOARD_TCA9554_I2C_TIMEOUT_MS);
+        if (result == ESP_OK)
+        {
+            device->direction = next_direction;
+        }
+    }
+    xSemaphoreGive(device->lock);
+    return result;
+}
+
+esp_err_t board_tca9554_get_input_level(board_tca9554_t *device,
+                                        uint8_t pin_mask,
+                                        uint8_t *level_mask)
+{
+    if (device == NULL || level_mask == NULL || pin_mask == 0U)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t input = 0U;
+    esp_err_t result = board_tca9554_read_inputs(device, &input);
+    if (result == ESP_OK)
+    {
+        *level_mask = (uint8_t)(input & pin_mask);
+    }
+    return result;
+}
+
 static esp_err_t _board_tca9554_read_input_reg(esp_io_expander_handle_t handle, uint32_t *value)
 {
     esp_err_t result = ESP_ERR_INVALID_ARG;

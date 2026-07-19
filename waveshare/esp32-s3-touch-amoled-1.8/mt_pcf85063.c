@@ -16,12 +16,20 @@
 #define MT_PCF85063_I2C_SPEED_HZ       (100000)
 
 #define MT_PCF85063_REG_CONTROL_1      (0x00)
+#define MT_PCF85063_REG_CONTROL_2      (0x01)
 #define MT_PCF85063_REG_SECONDS        (0x04)
+#define MT_PCF85063_REG_ALARM_SECONDS  (0x0B)
 #define MT_PCF85063_TIME_REG_COUNT     (7)
+#define MT_PCF85063_ALARM_REG_COUNT    (5)
 
 #define MT_PCF85063_CTRL1_EXT_TEST     (1U << 7)
 #define MT_PCF85063_CTRL1_STOP         (1U << 5)
 #define MT_PCF85063_CTRL1_12_24        (1U << 1)
+
+#define MT_PCF85063_CTRL2_AIE          (1U << 7)
+#define MT_PCF85063_CTRL2_AF           (1U << 6)
+
+#define MT_PCF85063_ALARM_DISABLE      (1U << 7)
 
 #define MT_PCF85063_SECONDS_OS         (1U << 7)
 #define MT_PCF85063_SECONDS_MASK       (0x7F)
@@ -163,6 +171,20 @@ static esp_err_t _pcf85063_write_control_1(mt_pcf85063_t *device, uint8_t contro
     return _pcf85063_write_registers(device, MT_PCF85063_REG_CONTROL_1, &control_1, 1);
 }
 
+static esp_err_t _pcf85063_read_control_2(mt_pcf85063_t *device,
+        uint8_t *control_2)
+{
+    return _pcf85063_read_registers(
+               device, MT_PCF85063_REG_CONTROL_2, control_2, 1);
+}
+
+static esp_err_t _pcf85063_write_control_2(mt_pcf85063_t *device,
+        uint8_t control_2)
+{
+    return _pcf85063_write_registers(
+               device, MT_PCF85063_REG_CONTROL_2, &control_2, 1);
+}
+
 static esp_err_t _pcf85063_normalize_mode(mt_pcf85063_t *device)
 {
     uint8_t control_1 = 0;
@@ -215,6 +237,33 @@ static esp_err_t _pcf85063_validate_time_for_set(
                                    year, month, timeinfo->tm_mday);
     normalized_time->tm_isdst = 0;
     return ESP_OK;
+}
+
+static esp_err_t _pcf85063_validate_alarm_config(
+    const mt_pcf85063_alarm_config_t *config)
+{
+    if (config == NULL ||
+            (!config->match_second && !config->match_minute &&
+             !config->match_hour && !config->match_day &&
+             !config->match_weekday))
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if ((config->match_second && config->second > 59U) ||
+            (config->match_minute && config->minute > 59U) ||
+            (config->match_hour && config->hour > 23U) ||
+            (config->match_day && (config->day == 0U || config->day > 31U)) ||
+            (config->match_weekday && config->weekday > 6U))
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return ESP_OK;
+}
+
+static uint8_t _pcf85063_encode_alarm_value(bool match, uint8_t value)
+{
+    return match ? _pcf85063_dec_to_bcd(value) :
+           MT_PCF85063_ALARM_DISABLE;
 }
 
 esp_err_t mt_pcf85063_create(i2c_master_bus_handle_t i2c_bus, mt_pcf85063_t **out_device)
@@ -489,5 +538,147 @@ exit:
     {
         xSemaphoreGive(device->lock);
     }
+    return result;
+}
+
+esp_err_t mt_pcf85063_alarm_configure(
+    mt_pcf85063_t *device, const mt_pcf85063_alarm_config_t *config)
+{
+    if (device == NULL || config == NULL)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!device->initialized || device->lock == NULL)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    esp_err_t result = _pcf85063_validate_alarm_config(config);
+    if (result != ESP_OK)
+    {
+        return result;
+    }
+
+    const uint8_t alarm[MT_PCF85063_ALARM_REG_COUNT] =
+    {
+        _pcf85063_encode_alarm_value(config->match_second, config->second),
+        _pcf85063_encode_alarm_value(config->match_minute, config->minute),
+        _pcf85063_encode_alarm_value(config->match_hour, config->hour),
+        _pcf85063_encode_alarm_value(config->match_day, config->day),
+        _pcf85063_encode_alarm_value(config->match_weekday, config->weekday),
+    };
+
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    uint8_t control_2 = 0U;
+    result = _pcf85063_read_control_2(device, &control_2);
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+
+    const uint8_t disabled_control_2 = (uint8_t)(
+                                           control_2 & (uint8_t)~(MT_PCF85063_CTRL2_AIE |
+                                               MT_PCF85063_CTRL2_AF));
+    result = _pcf85063_write_control_2(device, disabled_control_2);
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+    result = _pcf85063_write_registers(
+                 device, MT_PCF85063_REG_ALARM_SECONDS,
+                 alarm, sizeof(alarm));
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+
+    result = _pcf85063_write_control_2(
+                 device, (uint8_t)(disabled_control_2 | MT_PCF85063_CTRL2_AIE));
+    if (result != ESP_OK)
+    {
+        const esp_err_t rollback_result = _pcf85063_write_control_2(
+                                              device, disabled_control_2);
+        if (rollback_result != ESP_OK)
+        {
+            result = rollback_result;
+        }
+    }
+
+exit:
+    xSemaphoreGive(device->lock);
+    return result;
+}
+
+esp_err_t mt_pcf85063_alarm_disable(mt_pcf85063_t *device)
+{
+    if (device == NULL)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!device->initialized || device->lock == NULL)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    uint8_t control_2 = 0U;
+    esp_err_t result = _pcf85063_read_control_2(device, &control_2);
+    if (result == ESP_OK)
+    {
+        control_2 = (uint8_t)(control_2 &
+                              (uint8_t)~(MT_PCF85063_CTRL2_AIE |
+                                         MT_PCF85063_CTRL2_AF));
+        result = _pcf85063_write_control_2(device, control_2);
+    }
+    xSemaphoreGive(device->lock);
+    return result;
+}
+
+esp_err_t mt_pcf85063_alarm_get_status(
+    mt_pcf85063_t *device, mt_pcf85063_alarm_status_t *status)
+{
+    if (device == NULL || status == NULL)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!device->initialized || device->lock == NULL)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    uint8_t control_2 = 0U;
+    esp_err_t result = _pcf85063_read_control_2(device, &control_2);
+    xSemaphoreGive(device->lock);
+    if (result == ESP_OK)
+    {
+        *status = (mt_pcf85063_alarm_status_t)
+        {
+            .enabled = (control_2 & MT_PCF85063_CTRL2_AIE) != 0U,
+            .pending = (control_2 & MT_PCF85063_CTRL2_AF) != 0U,
+        };
+    }
+    return result;
+}
+
+esp_err_t mt_pcf85063_alarm_clear(mt_pcf85063_t *device)
+{
+    if (device == NULL)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!device->initialized || device->lock == NULL)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    uint8_t control_2 = 0U;
+    esp_err_t result = _pcf85063_read_control_2(device, &control_2);
+    if (result == ESP_OK && (control_2 & MT_PCF85063_CTRL2_AF) != 0U)
+    {
+        control_2 = (uint8_t)(control_2 & (uint8_t)~MT_PCF85063_CTRL2_AF);
+        result = _pcf85063_write_control_2(device, control_2);
+    }
+    xSemaphoreGive(device->lock);
     return result;
 }

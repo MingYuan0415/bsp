@@ -5,3 +5,4 @@ dependencies:
   espressif/esp_io_expander: "*"
   espressif/esp_lcd_sh8601: "*"
   esp_lcd_touch_ft5x06: "*"
+  espressif/esp_codec_dev: "^1.5"

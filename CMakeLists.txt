@@ -41,8 +41,13 @@ set(BOARD_SOURCES
     "${BOARD_PATH}/board_init.c"
     "${BOARD_PATH}/board_display.c"
     "${BOARD_PATH}/board_input.c"
+    "${BOARD_PATH}/board_audio.c"
+    "${BOARD_PATH}/board_audio_format.c"
+    "${BOARD_PATH}/board_sdspi.c"
     "${BOARD_PATH}/board_i2c_panel_io.c"
     "${BOARD_PATH}/board_tca9554.c"
+    "${BOARD_PATH}/board_imu.c"
+    "${BOARD_PATH}/board_imu_bridge.c"
     "${BOARD_PATH}/board_power.c"
     "${BOARD_PATH}/board_rtc.c"
     "${BOARD_PATH}/mt_axp2101.cpp"
@@ -67,5 +72,11 @@ idf_component_register(
         esp_lcd_touch_ft5x06
         esp_driver_gpio
         esp_driver_i2c
+        esp_driver_i2s
         esp_driver_spi
+        esp_driver_sdspi
+        esp_timer
+        fatfs
+        sdmmc
+        esp_codec_dev
 )

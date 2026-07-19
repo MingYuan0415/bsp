@@ -11,7 +11,10 @@ typedef int32_t esp_err_t;
 #define ESP_ERR_NO_MEM        ((esp_err_t)0x101)
 #define ESP_ERR_INVALID_ARG   ((esp_err_t)0x102)
 #define ESP_ERR_INVALID_STATE ((esp_err_t)0x103)
+#define ESP_ERR_NOT_SUPPORTED ((esp_err_t)0x106)
 #define ESP_ERR_TIMEOUT       ((esp_err_t)0x107)
 #define ESP_ERR_INVALID_RESPONSE ((esp_err_t)0x108)
+
+const char *esp_err_to_name(esp_err_t error);
 
 #endif /* __ESP_ERR_H__ */

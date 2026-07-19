@@ -12,6 +12,10 @@ typedef struct esp_lcd_panel_io_spi_config
 {
     uint32_t pclk_hz;
     int trans_queue_depth;
+    struct
+    {
+        unsigned int psram_dma_direct : 1;
+    } flags;
 } esp_lcd_panel_io_spi_config_t;
 
 typedef struct esp_lcd_panel_io_i2c_config

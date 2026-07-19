@@ -12,7 +12,9 @@
 #include "bsp_hal.h"
 #include "board_power.h"
 #include "board_rtc.h"
+#include "board_sdspi.h"
 #include "board_tca9554.h"
+#include "board_imu.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,7 +29,11 @@ extern "C" {
 #define BOARD_EXIO_PIN_LCD_RESET          (IO_EXPANDER_PIN_NUM_0)
 #define BOARD_EXIO_PIN_LCD_PWR_EN         (IO_EXPANDER_PIN_NUM_1)
 #define BOARD_EXIO_PIN_TOUCH_RESET        (IO_EXPANDER_PIN_NUM_2)
+#define BOARD_EXIO_PIN_RTC_INT            (IO_EXPANDER_PIN_NUM_3)
 #define BOARD_EXIO_PIN_PWR_BUTTON         (IO_EXPANDER_PIN_NUM_4)
+#define BOARD_EXIO_PIN_PMU_IRQ            (IO_EXPANDER_PIN_NUM_5)
+#define BOARD_EXIO_PIN_IMU_INT            (IO_EXPANDER_PIN_NUM_6)
+#define BOARD_EXIO_PIN_SD_CS              (IO_EXPANDER_PIN_NUM_7)
 
 /** @brief Recoverable LCD rail and panel initialization phase. */
 typedef enum
@@ -38,7 +44,7 @@ typedef enum
     BOARD_DISPLAY_POWER_PHASE_RESET_RELEASED,
     BOARD_DISPLAY_POWER_PHASE_PANEL_RESET,
     BOARD_DISPLAY_POWER_PHASE_PANEL_INITIALIZED,
-    BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED,
+    BOARD_DISPLAY_POWER_PHASE_SCANOUT_HIDDEN,
     BOARD_DISPLAY_POWER_PHASE_ENABLED,
 } board_display_power_phase_t;
 
@@ -58,12 +64,13 @@ typedef enum
 typedef struct board_display_state
 {
     bsp_display_port_t port;                 /**< LCD and touch handles. */
-    uint8_t brightness;                      /**< Last applied brightness. */
+    uint8_t brightness;                      /**< Target panel brightness. */
     board_display_power_phase_t power_phase; /**< LCD power phase. */
     bool rail_on;                            /**< LCD rail state. */
     bool reset_released;                     /**< LCD reset pin state. */
     bool panel_reset;                        /**< Panel reset completion. */
     bool panel_initialized;                  /**< Panel init completion. */
+    bool scanout_on;                         /**< Physical panel scan state. */
     bool brightness_applied;                 /**< Brightness command state. */
     bool enabled;                            /**< Visible panel state. */
     bool spi_bus_initialized;                /**< Owned SPI bus state. */
@@ -91,7 +98,7 @@ static inline bool _board_display_is_suspend_committed(
 {
     return display->screen_phase == BOARD_SCREEN_PHASE_SUSPENDED &&
            display->power_phase == BOARD_DISPLAY_POWER_PHASE_OFF &&
-           !display->rail_on && !display->enabled &&
+           !display->rail_on && !display->scanout_on && !display->enabled &&
            !display->touch_irq_enabled &&
            (display->touch_hibernated || !display->touch_reset_released);
 }
@@ -110,9 +117,54 @@ typedef struct board_context
     board_tca9554_t *io_expander_device;        /**< TCA9554 instance. */
     esp_io_expander_handle_t io_expander;       /**< TCA9554 base handle. */
     board_display_state_t display;              /**< Display state. */
+    board_imu_t *imu;                            /**< QMI8658C instance. */
+    bool audio_initialized;                      /**< ES8311 path state. */
+    board_sdspi_t *sd_card;                      /**< Mounted SDSPI card. */
     board_settings_t settings;                  /**< Persistent settings. */
     bsp_capabilities_t capabilities;            /**< Ready capabilities. */
 } board_context_t;
+
+/**
+ * @brief Report whether every TCA9554-dependent device released ownership.
+ *
+ * @param board is the board lifecycle state to inspect.
+ * @param rtc_has_resources reports whether RTC cleanup retained hidden state.
+ *
+ * @return true when the TCA9554 can be released; false otherwise.
+ *
+ * @warning board must not be NULL.
+ */
+static inline bool _board_io_expander_dependents_released(
+    const board_context_t *board, bool rtc_has_resources)
+{
+    return !rtc_has_resources && board->imu == NULL && board->sd_card == NULL &&
+           board->display.port.panel == NULL &&
+           board->display.port.panel_io == NULL &&
+           board->display.port.touch == NULL &&
+           board->display.port.touch_io == NULL;
+}
+
+/**
+ * @brief Report whether every owned I2C device released the shared bus.
+ *
+ * @param board is the board lifecycle state to inspect.
+ * @param rtc_has_resources reports whether RTC cleanup retained resources.
+ * @param power_has_resources reports whether PMU cleanup retained resources.
+ *
+ * @return true when the I2C bus can be deleted; false otherwise.
+ *
+ * @warning board must not be NULL.
+ */
+static inline bool _board_i2c_dependents_released(
+    const board_context_t *board, bool rtc_has_resources,
+    bool power_has_resources)
+{
+    return board->io_expander_device == NULL && !rtc_has_resources &&
+           !power_has_resources && board->imu == NULL &&
+           !board->audio_initialized && board->sd_card == NULL &&
+           board->display.port.touch == NULL &&
+           board->display.port.touch_io == NULL;
+}
 
 /** @brief Fault-injection stages used by board initialization tests. */
 typedef enum
@@ -134,6 +186,8 @@ typedef enum
     BOARD_INIT_STAGE_POWER,
     BOARD_INIT_STAGE_SCREEN_OPS,
     BOARD_INIT_STAGE_DISPLAY_PORT,
+    BOARD_INIT_STAGE_IMU,
+    BOARD_INIT_STAGE_AUDIO,
 } board_init_stage_t;
 
 /**
@@ -172,6 +226,12 @@ bsp_wakeup_descriptor_t board_get_wakeup_descriptor(void);
  * @return ESP_OK by default; tests may return an injected error.
  */
 esp_err_t board_init_stage_gate(board_init_stage_t stage);
+
+/** @brief Return the shared board I2C bus while the board is initialized. */
+i2c_master_bus_handle_t board_get_i2c_bus(void);
+
+/** @brief Return the board TCA9554 handle while the board is initialized. */
+board_tca9554_t *board_get_tca9554(void);
 
 /**
  * @brief Initialize the LCD, touch controller, and owned SPI resources.

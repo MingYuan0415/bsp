@@ -91,6 +91,39 @@ static int _mt_axp2101_register_write(uint8_t dev_addr, uint8_t reg_addr,
     return result;
 }
 
+static esp_err_t _mt_axp2101_io_result(mt_axp2101_t *device,
+                                       bool operation_ok)
+{
+    if (device->last_io_error != ESP_OK)
+    {
+        return device->last_io_error;
+    }
+    return operation_ok ? ESP_OK : ESP_ERR_INVALID_ARG;
+}
+
+static esp_err_t _mt_axp2101_write_register_byte(mt_axp2101_t *device,
+        uint8_t address,
+        uint8_t value)
+{
+    uint8_t data = value;
+    if (_mt_axp2101_register_write(AXP2101_SLAVE_ADDRESS, address, &data, 1) != 0)
+    {
+        return device->last_io_error == ESP_OK ? ESP_FAIL : device->last_io_error;
+    }
+    return ESP_OK;
+}
+
+static esp_err_t _mt_axp2101_read_register_byte(mt_axp2101_t *device,
+        uint8_t address,
+        uint8_t *value)
+{
+    if (_mt_axp2101_register_read(AXP2101_SLAVE_ADDRESS, address, value, 1) != 0)
+    {
+        return device->last_io_error == ESP_OK ? ESP_FAIL : device->last_io_error;
+    }
+    return ESP_OK;
+}
+
 static mt_axp2101_charger_status_t _mt_axp2101_convert_charger_status(uint8_t raw_status)
 {
     mt_axp2101_charger_status_t status = MT_AXP2101_CHARGER_UNKNOWN;
@@ -400,4 +433,490 @@ const char *mt_axp2101_charger_status_to_string(mt_axp2101_charger_status_t stat
         break;
     }
     return name;
+}
+
+void mt_axp2101_profile_init_default(mt_axp2101_profile_t *profile)
+{
+    if (profile == nullptr)
+    {
+        return;
+    }
+
+    *profile = {};
+    profile->rails[MT_AXP2101_RAIL_DCDC1] = {true, 3300};
+    profile->rails[MT_AXP2101_RAIL_DCDC2] = {true, 900};
+    profile->rails[MT_AXP2101_RAIL_DCDC3] = {true, 1200};
+    profile->rails[MT_AXP2101_RAIL_DCDC4] = {true, 1800};
+    /* DCDC5 is marked NC on the schematic and must remain disabled. */
+    profile->rails[MT_AXP2101_RAIL_DCDC5] = {false, 0};
+    profile->rails[MT_AXP2101_RAIL_ALDO1] = {true, 3300};
+    profile->rails[MT_AXP2101_RAIL_ALDO2] = {true, 3300};
+    profile->rails[MT_AXP2101_RAIL_ALDO3] = {true, 3000};
+    profile->rails[MT_AXP2101_RAIL_ALDO4] = {true, 1800};
+    profile->rails[MT_AXP2101_RAIL_BLDO1] = {true, 1200};
+    profile->rails[MT_AXP2101_RAIL_BLDO2] = {true, 2800};
+    profile->rails[MT_AXP2101_RAIL_CPUSLDO] = {true, 1200};
+    profile->rails[MT_AXP2101_RAIL_DLDO1] = {false, 0};
+    profile->rails[MT_AXP2101_RAIL_DLDO2] = {false, 0};
+    profile->precharge_current_ma = 50;
+    profile->charge_current_ma = 200;
+    profile->termination_current_ma = 25;
+    profile->charge_target_mv = 4100;
+    profile->irq_enable_mask = MT_AXP2101_IRQ_DEFAULT;
+}
+
+static esp_err_t _mt_axp2101_apply_rail(mt_axp2101_t *device,
+                                        mt_axp2101_rail_t rail,
+                                        const mt_axp2101_rail_config_t *config)
+{
+    if (rail < 0 || rail >= MT_AXP2101_RAIL_COUNT || config == nullptr)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    bool operation_ok = true;
+    if (config->voltage_mv != 0U)
+    {
+        switch (rail)
+        {
+        case MT_AXP2101_RAIL_DCDC1:
+            operation_ok = device->pmu.setDC1Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_DCDC2:
+            operation_ok = device->pmu.setDC2Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_DCDC3:
+            operation_ok = device->pmu.setDC3Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_DCDC4:
+            operation_ok = device->pmu.setDC4Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_DCDC5:
+            operation_ok = device->pmu.setDC5Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_ALDO1:
+            operation_ok = device->pmu.setALDO1Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_ALDO2:
+            operation_ok = device->pmu.setALDO2Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_ALDO3:
+            operation_ok = device->pmu.setALDO3Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_ALDO4:
+            operation_ok = device->pmu.setALDO4Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_BLDO1:
+            operation_ok = device->pmu.setBLDO1Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_BLDO2:
+            operation_ok = device->pmu.setBLDO2Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_CPUSLDO:
+            operation_ok = device->pmu.setCPUSLDOVoltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_DLDO1:
+            operation_ok = device->pmu.setDLDO1Voltage(config->voltage_mv);
+            break;
+        case MT_AXP2101_RAIL_DLDO2:
+            operation_ok = device->pmu.setDLDO2Voltage(config->voltage_mv);
+            break;
+        default:
+            operation_ok = false;
+            break;
+        }
+        esp_err_t result = _mt_axp2101_io_result(device, operation_ok);
+        if (result != ESP_OK)
+        {
+            return result;
+        }
+    }
+
+    switch (rail)
+    {
+    case MT_AXP2101_RAIL_DCDC1:
+        operation_ok = config->enable ? device->pmu.enableDC1() : device->pmu.disableDC1();
+        break;
+    case MT_AXP2101_RAIL_DCDC2:
+        operation_ok = config->enable ? device->pmu.enableDC2() : device->pmu.disableDC2();
+        break;
+    case MT_AXP2101_RAIL_DCDC3:
+        operation_ok = config->enable ? device->pmu.enableDC3() : device->pmu.disableDC3();
+        break;
+    case MT_AXP2101_RAIL_DCDC4:
+        operation_ok = config->enable ? device->pmu.enableDC4() : device->pmu.disableDC4();
+        break;
+    case MT_AXP2101_RAIL_DCDC5:
+        operation_ok = config->enable ? device->pmu.enableDC5() : device->pmu.disableDC5();
+        break;
+    case MT_AXP2101_RAIL_ALDO1:
+        operation_ok = config->enable ? device->pmu.enableALDO1() : device->pmu.disableALDO1();
+        break;
+    case MT_AXP2101_RAIL_ALDO2:
+        operation_ok = config->enable ? device->pmu.enableALDO2() : device->pmu.disableALDO2();
+        break;
+    case MT_AXP2101_RAIL_ALDO3:
+        operation_ok = config->enable ? device->pmu.enableALDO3() : device->pmu.disableALDO3();
+        break;
+    case MT_AXP2101_RAIL_ALDO4:
+        operation_ok = config->enable ? device->pmu.enableALDO4() : device->pmu.disableALDO4();
+        break;
+    case MT_AXP2101_RAIL_BLDO1:
+        operation_ok = config->enable ? device->pmu.enableBLDO1() : device->pmu.disableBLDO1();
+        break;
+    case MT_AXP2101_RAIL_BLDO2:
+        operation_ok = config->enable ? device->pmu.enableBLDO2() : device->pmu.disableBLDO2();
+        break;
+    case MT_AXP2101_RAIL_CPUSLDO:
+        operation_ok = config->enable ? device->pmu.enableCPUSLDO() : device->pmu.disableCPUSLDO();
+        break;
+    case MT_AXP2101_RAIL_DLDO1:
+        operation_ok = config->enable ? device->pmu.enableDLDO1() : device->pmu.disableDLDO1();
+        break;
+    case MT_AXP2101_RAIL_DLDO2:
+        operation_ok = config->enable ? device->pmu.enableDLDO2() : device->pmu.disableDLDO2();
+        break;
+    default:
+        operation_ok = false;
+        break;
+    }
+    return _mt_axp2101_io_result(device, operation_ok);
+}
+
+static esp_err_t _mt_axp2101_set_precharge_current(mt_axp2101_t *device,
+        uint16_t current_ma)
+{
+    if (current_ma > 75U || (current_ma % 25U) != 0U)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    device->pmu.setPrechargeCurr((xpowers_prechg_t)(current_ma / 25U));
+    return _mt_axp2101_io_result(device, true);
+}
+
+static esp_err_t _mt_axp2101_set_charge_current(mt_axp2101_t *device,
+        uint16_t current_ma)
+{
+    uint8_t option = 0xFFU;
+    switch (current_ma)
+    {
+    case 0:
+        option = XPOWERS_AXP2101_CHG_CUR_0MA;
+        break;
+    case 100:
+        option = XPOWERS_AXP2101_CHG_CUR_100MA;
+        break;
+    case 125:
+        option = XPOWERS_AXP2101_CHG_CUR_125MA;
+        break;
+    case 150:
+        option = XPOWERS_AXP2101_CHG_CUR_150MA;
+        break;
+    case 175:
+        option = XPOWERS_AXP2101_CHG_CUR_175MA;
+        break;
+    case 200:
+        option = XPOWERS_AXP2101_CHG_CUR_200MA;
+        break;
+    case 300:
+        option = XPOWERS_AXP2101_CHG_CUR_300MA;
+        break;
+    case 400:
+        option = XPOWERS_AXP2101_CHG_CUR_400MA;
+        break;
+    case 500:
+        option = XPOWERS_AXP2101_CHG_CUR_500MA;
+        break;
+    case 600:
+        option = XPOWERS_AXP2101_CHG_CUR_600MA;
+        break;
+    case 700:
+        option = XPOWERS_AXP2101_CHG_CUR_700MA;
+        break;
+    case 800:
+        option = XPOWERS_AXP2101_CHG_CUR_800MA;
+        break;
+    case 900:
+        option = XPOWERS_AXP2101_CHG_CUR_900MA;
+        break;
+    case 1000:
+        option = XPOWERS_AXP2101_CHG_CUR_1000MA;
+        break;
+    default:
+        break;
+    }
+    if (option == 0xFFU)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return _mt_axp2101_io_result(device,
+                                 device->pmu.setChargerConstantCurr(option));
+}
+
+static esp_err_t _mt_axp2101_set_termination_current(mt_axp2101_t *device,
+        uint16_t current_ma)
+{
+    if (current_ma > 200U || (current_ma % 25U) != 0U)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    uint8_t value = 0U;
+    esp_err_t result = _mt_axp2101_read_register_byte(
+                           device, XPOWERS_AXP2101_ITERM_CHG_SET_CTRL, &value);
+    if (result != ESP_OK)
+    {
+        return result;
+    }
+    value = (uint8_t)((value & 0xE0U) | 0x10U | (current_ma / 25U));
+    return _mt_axp2101_write_register_byte(
+               device, XPOWERS_AXP2101_ITERM_CHG_SET_CTRL, value);
+}
+
+static esp_err_t _mt_axp2101_set_target_voltage(mt_axp2101_t *device,
+        uint16_t voltage_mv)
+{
+    uint8_t option = 0U;
+    switch (voltage_mv)
+    {
+    case 4000:
+        option = XPOWERS_AXP2101_CHG_VOL_4V;
+        break;
+    case 4100:
+        option = XPOWERS_AXP2101_CHG_VOL_4V1;
+        break;
+    case 4200:
+        option = XPOWERS_AXP2101_CHG_VOL_4V2;
+        break;
+    case 4350:
+        option = XPOWERS_AXP2101_CHG_VOL_4V35;
+        break;
+    case 4400:
+        option = XPOWERS_AXP2101_CHG_VOL_4V4;
+        break;
+    default:
+        return ESP_ERR_INVALID_ARG;
+    }
+    return _mt_axp2101_io_result(device,
+                                 device->pmu.setChargeTargetVoltage(option));
+}
+
+static esp_err_t _mt_axp2101_set_irq_mask_unlocked(mt_axp2101_t *device,
+        uint32_t mask)
+{
+    device->last_io_error = ESP_OK;
+    bool operation_ok = device->pmu.disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
+    if (operation_ok)
+    {
+        device->pmu.clearIrqStatus();
+        operation_ok = device->pmu.enableIRQ(mask);
+    }
+    return _mt_axp2101_io_result(device, operation_ok);
+}
+
+esp_err_t mt_axp2101_apply_profile(mt_axp2101_t *device,
+                                   const mt_axp2101_profile_t *profile)
+{
+    if (device == nullptr || profile == nullptr || device->lock == nullptr ||
+            !device->initialized || s_callback_device != device)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    esp_err_t result = ESP_OK;
+    device->last_io_error = ESP_OK;
+    for (int rail = 0; rail < MT_AXP2101_RAIL_COUNT; ++rail)
+    {
+        result = _mt_axp2101_apply_rail(device,
+                                        (mt_axp2101_rail_t)rail,
+                                        &profile->rails[rail]);
+        if (result != ESP_OK)
+        {
+            goto exit;
+        }
+    }
+    result = _mt_axp2101_set_precharge_current(device,
+             profile->precharge_current_ma);
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+    result = _mt_axp2101_set_charge_current(device, profile->charge_current_ma);
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+    result = _mt_axp2101_set_termination_current(
+                 device, profile->termination_current_ma);
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+    result = _mt_axp2101_set_target_voltage(device, profile->charge_target_mv);
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+    result = _mt_axp2101_io_result(device,
+                                   device->pmu.enableBattDetection());
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+    device->pmu.enableGauge();
+    device->pmu.enableCellbatteryCharge();
+    result = _mt_axp2101_io_result(device, true);
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
+    result = _mt_axp2101_set_irq_mask_unlocked(device,
+             profile->irq_enable_mask);
+
+exit:
+    xSemaphoreGive(device->lock);
+    return result;
+}
+
+static void _mt_axp2101_read_rail_unlocked(mt_axp2101_t *device,
+        mt_axp2101_rail_t rail,
+        mt_axp2101_rail_info_t *info)
+{
+    switch (rail)
+    {
+    case MT_AXP2101_RAIL_DCDC1:
+        info->enabled = device->pmu.isEnableDC1();
+        info->voltage_mv = device->pmu.getDC1Voltage();
+        break;
+    case MT_AXP2101_RAIL_DCDC2:
+        info->enabled = device->pmu.isEnableDC2();
+        info->voltage_mv = device->pmu.getDC2Voltage();
+        break;
+    case MT_AXP2101_RAIL_DCDC3:
+        info->enabled = device->pmu.isEnableDC3();
+        info->voltage_mv = device->pmu.getDC3Voltage();
+        break;
+    case MT_AXP2101_RAIL_DCDC4:
+        info->enabled = device->pmu.isEnableDC4();
+        info->voltage_mv = device->pmu.getDC4Voltage();
+        break;
+    case MT_AXP2101_RAIL_DCDC5:
+        info->enabled = device->pmu.isEnableDC5();
+        info->voltage_mv = device->pmu.getDC5Voltage();
+        break;
+    case MT_AXP2101_RAIL_ALDO1:
+        info->enabled = device->pmu.isEnableALDO1();
+        info->voltage_mv = device->pmu.getALDO1Voltage();
+        break;
+    case MT_AXP2101_RAIL_ALDO2:
+        info->enabled = device->pmu.isEnableALDO2();
+        info->voltage_mv = device->pmu.getALDO2Voltage();
+        break;
+    case MT_AXP2101_RAIL_ALDO3:
+        info->enabled = device->pmu.isEnableALDO3();
+        info->voltage_mv = device->pmu.getALDO3Voltage();
+        break;
+    case MT_AXP2101_RAIL_ALDO4:
+        info->enabled = device->pmu.isEnableALDO4();
+        info->voltage_mv = device->pmu.getALDO4Voltage();
+        break;
+    case MT_AXP2101_RAIL_BLDO1:
+        info->enabled = device->pmu.isEnableBLDO1();
+        info->voltage_mv = device->pmu.getBLDO1Voltage();
+        break;
+    case MT_AXP2101_RAIL_BLDO2:
+        info->enabled = device->pmu.isEnableBLDO2();
+        info->voltage_mv = device->pmu.getBLDO2Voltage();
+        break;
+    case MT_AXP2101_RAIL_CPUSLDO:
+        info->enabled = device->pmu.isEnableCPUSLDO();
+        info->voltage_mv = device->pmu.getCPUSLDOVoltage();
+        break;
+    case MT_AXP2101_RAIL_DLDO1:
+        info->enabled = device->pmu.isEnableDLDO1();
+        info->voltage_mv = device->pmu.getDLDO1Voltage();
+        break;
+    case MT_AXP2101_RAIL_DLDO2:
+        info->enabled = device->pmu.isEnableDLDO2();
+        info->voltage_mv = device->pmu.getDLDO2Voltage();
+        break;
+    default:
+        info->enabled = false;
+        info->voltage_mv = 0U;
+        break;
+    }
+}
+
+esp_err_t mt_axp2101_get_rail_info(mt_axp2101_t *device,
+                                   mt_axp2101_rail_t rail,
+                                   mt_axp2101_rail_info_t *info)
+{
+    if (device == nullptr || info == nullptr || rail < 0 ||
+            rail >= MT_AXP2101_RAIL_COUNT || device->lock == nullptr ||
+            !device->initialized || s_callback_device != device)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    device->last_io_error = ESP_OK;
+    mt_axp2101_rail_info_t readback = {};
+    _mt_axp2101_read_rail_unlocked(device, rail, &readback);
+    esp_err_t result = device->last_io_error;
+    if (result == ESP_OK)
+    {
+        *info = readback;
+    }
+    xSemaphoreGive(device->lock);
+    return result;
+}
+
+esp_err_t mt_axp2101_get_irq_status(mt_axp2101_t *device, uint32_t *status)
+{
+    if (device == nullptr || status == nullptr || device->lock == nullptr ||
+            !device->initialized || s_callback_device != device)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    device->last_io_error = ESP_OK;
+    const uint32_t library_status = (uint32_t)device->pmu.getIrqStatus();
+    /* XPowers packs INTSTS1 and INTSTS3 opposite to its public IRQ masks. */
+    const uint32_t irq_status = ((library_status & 0x00FF0000U) >> 16U) |
+                                (library_status & 0x0000FF00U) |
+                                ((library_status & 0x000000FFU) << 16U);
+    esp_err_t result = device->last_io_error;
+    if (result == ESP_OK)
+    {
+        *status = irq_status;
+    }
+    xSemaphoreGive(device->lock);
+    return result;
+}
+
+esp_err_t mt_axp2101_clear_irq_status(mt_axp2101_t *device)
+{
+    if (device == nullptr || device->lock == nullptr || !device->initialized ||
+            s_callback_device != device)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    device->last_io_error = ESP_OK;
+    device->pmu.clearIrqStatus();
+    esp_err_t result = device->last_io_error;
+    xSemaphoreGive(device->lock);
+    return result;
+}
+
+esp_err_t mt_axp2101_set_irq_mask(mt_axp2101_t *device, uint32_t mask)
+{
+    if (device == nullptr || device->lock == nullptr || !device->initialized ||
+            s_callback_device != device)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    xSemaphoreTake(device->lock, portMAX_DELAY);
+    esp_err_t result = _mt_axp2101_set_irq_mask_unlocked(device, mask);
+    xSemaphoreGive(device->lock);
+    return result;
 }

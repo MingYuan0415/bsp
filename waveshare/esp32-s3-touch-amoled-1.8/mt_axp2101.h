@@ -42,6 +42,71 @@ typedef struct mt_axp2101_power_info
     int8_t battery_percent;                    /**< Percent, or -1 if absent. */
 } mt_axp2101_power_info_t;
 
+/** @brief AXP2101 power rail identifiers. */
+typedef enum
+{
+    MT_AXP2101_RAIL_DCDC1 = 0,
+    MT_AXP2101_RAIL_DCDC2,
+    MT_AXP2101_RAIL_DCDC3,
+    MT_AXP2101_RAIL_DCDC4,
+    MT_AXP2101_RAIL_DCDC5,
+    MT_AXP2101_RAIL_ALDO1,
+    MT_AXP2101_RAIL_ALDO2,
+    MT_AXP2101_RAIL_ALDO3,
+    MT_AXP2101_RAIL_ALDO4,
+    MT_AXP2101_RAIL_BLDO1,
+    MT_AXP2101_RAIL_BLDO2,
+    MT_AXP2101_RAIL_CPUSLDO,
+    MT_AXP2101_RAIL_DLDO1,
+    MT_AXP2101_RAIL_DLDO2,
+    MT_AXP2101_RAIL_COUNT,
+} mt_axp2101_rail_t;
+
+/** @brief Requested or read back state of one AXP2101 rail. */
+typedef struct mt_axp2101_rail_config
+{
+    bool enable;                 /**< Whether the rail should be enabled. */
+    uint16_t voltage_mv;         /**< Requested or measured setting. */
+} mt_axp2101_rail_config_t;
+
+/**
+ * @brief Complete AXP2101 board power profile.
+ *
+ * A voltage of zero means that the corresponding rail is left unchanged when
+ * applying a profile.  This allows callers to update only charger settings.
+ */
+typedef struct mt_axp2101_profile
+{
+    mt_axp2101_rail_config_t rails[MT_AXP2101_RAIL_COUNT];
+    uint16_t precharge_current_ma; /**< Supported values: 0, 25, 50, 75 mA. */
+    uint16_t charge_current_ma;
+    uint16_t termination_current_ma;
+    uint16_t charge_target_mv;
+    uint32_t irq_enable_mask;
+} mt_axp2101_profile_t;
+
+/** @brief Read-back state for one AXP2101 rail. */
+typedef struct mt_axp2101_rail_info
+{
+    bool enabled;
+    uint16_t voltage_mv;
+} mt_axp2101_rail_info_t;
+
+/* AXP2101 IRQ bits exposed without requiring the C++ XPowers headers. */
+#define MT_AXP2101_IRQ_BAT_INSERT       (1UL << 13)
+#define MT_AXP2101_IRQ_BAT_REMOVE       (1UL << 12)
+#define MT_AXP2101_IRQ_VBUS_INSERT      (1UL << 15)
+#define MT_AXP2101_IRQ_VBUS_REMOVE      (1UL << 14)
+#define MT_AXP2101_IRQ_POWER_KEY_SHORT  (1UL << 11)
+#define MT_AXP2101_IRQ_POWER_KEY_LONG   (1UL << 10)
+#define MT_AXP2101_IRQ_CHARGE_START    (1UL << 19)
+#define MT_AXP2101_IRQ_CHARGE_DONE     (1UL << 20)
+#define MT_AXP2101_IRQ_DEFAULT \
+    (MT_AXP2101_IRQ_BAT_INSERT | MT_AXP2101_IRQ_BAT_REMOVE | \
+     MT_AXP2101_IRQ_VBUS_INSERT | MT_AXP2101_IRQ_VBUS_REMOVE | \
+     MT_AXP2101_IRQ_POWER_KEY_SHORT | MT_AXP2101_IRQ_POWER_KEY_LONG | \
+     MT_AXP2101_IRQ_CHARGE_START | MT_AXP2101_IRQ_CHARGE_DONE)
+
 /**
  * @brief Create and initialize an AXP2101 PMU instance.
  *
@@ -94,6 +159,32 @@ esp_err_t mt_axp2101_get_power_info(
  */
 const char *mt_axp2101_charger_status_to_string(
     mt_axp2101_charger_status_t status);
+
+/** @brief Fill a profile with the schematic's default rail/charger settings. */
+void mt_axp2101_profile_init_default(mt_axp2101_profile_t *profile);
+
+/**
+ * @brief Apply rail, charger, and IRQ settings to the PMU.
+ *
+ * @param device is the initialized PMU instance.
+ * @param profile contains the requested settings.
+ *
+ * @return ESP_OK on success; otherwise an ESP-IDF error.
+ */
+esp_err_t mt_axp2101_apply_profile(mt_axp2101_t *device,
+                                   const mt_axp2101_profile_t *profile);
+
+/**
+ * @brief Read back one power rail's enable state and voltage setting.
+ */
+esp_err_t mt_axp2101_get_rail_info(mt_axp2101_t *device,
+                                   mt_axp2101_rail_t rail,
+                                   mt_axp2101_rail_info_t *info);
+
+/** @brief Read the PMU interrupt status registers and clear them separately. */
+esp_err_t mt_axp2101_get_irq_status(mt_axp2101_t *device, uint32_t *status);
+esp_err_t mt_axp2101_clear_irq_status(mt_axp2101_t *device);
+esp_err_t mt_axp2101_set_irq_mask(mt_axp2101_t *device, uint32_t mask);
 
 #ifdef __cplusplus
 }
