@@ -15,6 +15,9 @@ target_include_directories(xpowers_behavior_test PRIVATE
     fakes
     ../../include
     ../../waveshare/esp32-s3-touch-amoled-1.8
+)
+
+target_include_directories(xpowers_behavior_test SYSTEM PRIVATE
     ../../XPowersLib/src
 )
 

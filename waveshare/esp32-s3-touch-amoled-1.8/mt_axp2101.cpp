@@ -15,6 +15,10 @@
 #define XPOWERS_LOG_E(...) LOG_E(__VA_ARGS__)
 #define XPOWERS_LOG_I(...) LOG_D(__VA_ARGS__)
 #define XPOWERS_LOG_D(...) LOG_D(__VA_ARGS__)
+#if !defined(ESP_PLATFORM)
+    #define ESP_IDF_VERSION 0
+    #define ESP_IDF_VERSION_VAL(major, minor, patch) (0)
+#endif
 #define XPOWERS_CHIP_AXP2101
 #include "XPowersLib.h"
 
@@ -122,6 +126,21 @@ static esp_err_t _mt_axp2101_read_register_byte(mt_axp2101_t *device,
         return device->last_io_error == ESP_OK ? ESP_FAIL : device->last_io_error;
     }
     return ESP_OK;
+}
+
+static esp_err_t _mt_axp2101_enable_fuel_gauge(mt_axp2101_t *device)
+{
+    uint8_t value = 0U;
+    esp_err_t result = _mt_axp2101_read_register_byte(
+                           device, XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL,
+                           &value);
+    if (result != ESP_OK)
+    {
+        return result;
+    }
+    value |= (1U << 3U);
+    return _mt_axp2101_write_register_byte(
+               device, XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL, value);
 }
 
 static mt_axp2101_charger_status_t _mt_axp2101_convert_charger_status(uint8_t raw_status)
@@ -763,7 +782,11 @@ esp_err_t mt_axp2101_apply_profile(mt_axp2101_t *device,
     {
         goto exit;
     }
-    device->pmu.enableGauge();
+    result = _mt_axp2101_enable_fuel_gauge(device);
+    if (result != ESP_OK)
+    {
+        goto exit;
+    }
     device->pmu.enableCellbatteryCharge();
     result = _mt_axp2101_io_result(device, true);
     if (result != ESP_OK)
@@ -879,11 +902,8 @@ esp_err_t mt_axp2101_get_irq_status(mt_axp2101_t *device, uint32_t *status)
     }
     xSemaphoreTake(device->lock, portMAX_DELAY);
     device->last_io_error = ESP_OK;
-    const uint32_t library_status = (uint32_t)device->pmu.getIrqStatus();
-    /* XPowers packs INTSTS1 and INTSTS3 opposite to its public IRQ masks. */
-    const uint32_t irq_status = ((library_status & 0x00FF0000U) >> 16U) |
-                                (library_status & 0x0000FF00U) |
-                                ((library_status & 0x000000FFU) << 16U);
+    const uint32_t irq_status =
+        static_cast<uint32_t>(device->pmu.getIrqStatus());
     esp_err_t result = device->last_io_error;
     if (result == ESP_OK)
     {

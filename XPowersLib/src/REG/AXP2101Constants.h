@@ -127,7 +127,7 @@
 #define XPOWERS_AXP2101_LDO_VOL8_CTRL                    (0x9A)
 
 
-#define XPOWERS_AXP2101_BAT_PARAME                       (0xA1)
+#define XPOWERS_AXP2101_BAT_PARAMS                       (0xA1)
 #define XPOWERS_AXP2101_FUEL_GAUGE_CTRL                  (0xA2)
 #define XPOWERS_AXP2101_BAT_PERCENT_DATA                 (0xA4)
 
@@ -239,3 +239,4 @@
 
 
 #define XPOWERS_AXP2101_CONVERSION(raw)                 (22.0 + (7274 - raw) / 20.0)
+

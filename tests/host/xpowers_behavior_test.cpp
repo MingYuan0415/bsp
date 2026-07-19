@@ -1,8 +1,12 @@
 #include <array>
 #include <cassert>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 
+/* XPowersLib evaluates these macros in its host build as well. */
+#define ESP_IDF_VERSION 0
+#define ESP_IDF_VERSION_VAL(major, minor, patch) (0)
 #define XPOWERS_CHIP_AXP2101
 #include "XPowersLib.h"
 
@@ -251,6 +255,9 @@ static void _test_board_precharge_range(void)
     profile.precharge_current_ma = 75U;
     assert(mt_axp2101_apply_profile(device, &profile) == ESP_OK);
     assert((s_registers[XPOWERS_AXP2101_IPRECHG_SET] & 0x03U) == 0x03U);
+    assert((s_registers[XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL] &
+            ((1U << 3U) | (1U << 1U))) ==
+           ((1U << 3U) | (1U << 1U)));
 
     s_registers[XPOWERS_AXP2101_IPRECHG_SET] = 0xA2U;
     profile.precharge_current_ma = 100U;

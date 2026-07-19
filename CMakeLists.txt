@@ -60,8 +60,6 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS
         ${BOARD_PATH}
-        "${XPOWERSLIB_ROOT}/src"
-        "${XPOWERSLIB_ROOT}/src/REG"
     REQUIRES
         esp_lcd
         esp_lcd_touch
@@ -79,4 +77,9 @@ idf_component_register(
         fatfs
         sdmmc
         esp_codec_dev
+)
+
+target_include_directories(${COMPONENT_LIB} SYSTEM PRIVATE
+    "${XPOWERSLIB_ROOT}/src"
+    "${XPOWERSLIB_ROOT}/src/REG"
 )

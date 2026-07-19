@@ -8,7 +8,11 @@ menu "MicroTech Project Config"
             bool "Waveshare ESP32-S3-Touch-AMOLED-1.8"
             depends on IDF_TARGET_ESP32S3
             select IO_EXPANDER_ENABLE_GPIO_API_WRAPPER
+            select XPOWERS_ESP_IDF_NEW_API
     endchoice
+
+    config XPOWERS_ESP_IDF_NEW_API
+        bool
 
     menu "Board display"
         depends on BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_8
