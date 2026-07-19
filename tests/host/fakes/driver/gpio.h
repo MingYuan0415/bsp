@@ -6,6 +6,15 @@ typedef int gpio_num_t;
 
 #define GPIO_NUM_NC (-1)
 #define GPIO_NUM_0  0
+#define GPIO_NUM_4  4
+#define GPIO_NUM_5  5
+#define GPIO_NUM_6  6
+#define GPIO_NUM_7  7
+#define GPIO_NUM_11 11
+#define GPIO_NUM_12 12
 #define GPIO_NUM_21 21
+
+int gpio_intr_enable(gpio_num_t gpio_num);
+int gpio_intr_disable(gpio_num_t gpio_num);
 
 #endif /* __DRIVER_GPIO_H__ */

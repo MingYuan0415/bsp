@@ -19,6 +19,10 @@
 #include "board_i2c_panel_io.h"
 #include "board_init.h"
 
+#define DBG_TAG "board_display"
+#define DBG_LVL DBG_INFO
+#include "mt_log.h"
+
 #define LCD_SPI_HOST                    (SPI2_HOST)
 #define LCD_SPI_PIN_PCLK                (GPIO_NUM_11)
 #define LCD_SPI_PIN_CS                  (GPIO_NUM_12)
@@ -43,6 +47,8 @@
 
 #define TOUCH_RESET_HOLD_MS             (5)
 #define TOUCH_RESET_READY_MS            (300)
+#define IO_EXPANDER_WRITE_ATTEMPTS       (3U)
+#define IO_EXPANDER_RETRY_DELAY_MS       (2U)
 #define FT5X06_REG_CHIP_ID              (0xA3)
 #define FT5X06_REG_POWER_MODE           (0xA5)
 #define FT5X06_POWER_MODE_HIBERNATE     (3)
@@ -117,6 +123,25 @@ static esp_err_t _board_touch_write(board_context_t *board,
     {
         result = esp_lcd_panel_io_tx_param(board->display.port.touch_io,
                                            reg, &value, sizeof(value));
+    }
+    return result;
+}
+
+static esp_err_t _board_display_set_expander_level(board_context_t *board,
+        uint32_t pin, uint8_t level)
+{
+    esp_err_t result = ESP_FAIL;
+    for (uint8_t attempt = 0; attempt < IO_EXPANDER_WRITE_ATTEMPTS; ++attempt)
+    {
+        result = esp_io_expander_set_level(board->io_expander, pin, level);
+        if (result == ESP_OK)
+        {
+            break;
+        }
+        if (attempt + 1U < IO_EXPANDER_WRITE_ATTEMPTS)
+        {
+            vTaskDelay(pdMS_TO_TICKS(IO_EXPANDER_RETRY_DELAY_MS));
+        }
     }
     return result;
 }
@@ -407,8 +432,8 @@ exit:
 
 static esp_err_t _board_display_power_rail_on(board_context_t *board)
 {
-    esp_err_t result = esp_io_expander_set_level(
-                           board->io_expander, BOARD_EXIO_PIN_LCD_PWR_EN, 1);
+    esp_err_t result = _board_display_set_expander_level(
+                           board, BOARD_EXIO_PIN_LCD_PWR_EN, 1);
     if (result == ESP_OK)
     {
         board->display.rail_on = true;
@@ -425,8 +450,8 @@ static esp_err_t _board_display_power_rail_on(board_context_t *board)
 
 static esp_err_t _board_display_assert_reset(board_context_t *board)
 {
-    esp_err_t result = esp_io_expander_set_level(
-                           board->io_expander, BOARD_EXIO_PIN_LCD_RESET, 0);
+    esp_err_t result = _board_display_set_expander_level(
+                           board, BOARD_EXIO_PIN_LCD_RESET, 0);
     if (result == ESP_OK)
     {
         board->display.reset_released = false;
@@ -442,8 +467,8 @@ static esp_err_t _board_display_assert_reset(board_context_t *board)
 
 static esp_err_t _board_display_release_reset(board_context_t *board)
 {
-    esp_err_t result = esp_io_expander_set_level(
-                           board->io_expander, BOARD_EXIO_PIN_LCD_RESET, 1);
+    esp_err_t result = _board_display_set_expander_level(
+                           board, BOARD_EXIO_PIN_LCD_RESET, 1);
     if (result == ESP_OK)
     {
         board->display.reset_released = true;
@@ -532,17 +557,40 @@ exit:
 
 static void _board_display_restore_after_off_failure(board_context_t *board)
 {
-    if (board->display.touch_hibernated)
+    if (board->display.touch_hibernated ||
+            !board->display.touch_reset_released)
     {
-        const esp_err_t result = _board_touch_replay_config(board);
+        esp_err_t result = _board_display_set_expander_level(
+                               board, BOARD_EXIO_PIN_TOUCH_RESET, 0);
         if (result == ESP_OK)
         {
+            board->display.touch_reset_released = false;
             board->display.touch_hibernated = false;
+            board->display.touch_configured = false;
+            vTaskDelay(pdMS_TO_TICKS(TOUCH_RESET_HOLD_MS));
+            result = _board_display_set_expander_level(
+                         board, BOARD_EXIO_PIN_TOUCH_RESET, 1);
+        }
+        if (result == ESP_OK)
+        {
+            board->display.touch_reset_released = true;
+            vTaskDelay(pdMS_TO_TICKS(TOUCH_RESET_READY_MS));
+            result = _board_touch_replay_config(board);
+        }
+        if (result == ESP_OK)
+        {
             board->display.touch_configured = true;
+        }
+        else
+        {
+            LOG_E("touch restore after panel failure: %#x",
+                  (unsigned int)result);
         }
     }
 
     if (!board->display.touch_hibernated &&
+            board->display.touch_reset_released &&
+            board->display.touch_configured &&
             !board->display.touch_irq_enabled && board->display.rail_on &&
             board->display.panel_initialized)
     {
@@ -597,8 +645,8 @@ static esp_err_t _board_display_power_off(board_context_t *board)
 
     if (result == ESP_OK && board->display.rail_on)
     {
-        result = esp_io_expander_set_level(
-                     board->io_expander, BOARD_EXIO_PIN_LCD_PWR_EN, 0);
+        result = _board_display_set_expander_level(
+                     board, BOARD_EXIO_PIN_LCD_PWR_EN, 0);
     }
     if (result == ESP_OK)
     {
@@ -681,16 +729,40 @@ static esp_err_t _board_display_suspend_touch(board_context_t *board,
             }
             else
             {
-                _board_display_restore_suspend_irq(board, restore_active_irq);
+                const esp_err_t hibernate_result = result;
+                /* Some FT5X06 revisions stop acknowledging after accepting
+                 * HIBERNATE. Reset is the deterministic suspend fallback. */
+                if (hibernate_result != ESP_ERR_INVALID_RESPONSE)
+                {
+                    LOG_W("touch hibernate failed, use reset: %#x",
+                          (unsigned int)hibernate_result);
+                }
+                result = _board_display_set_expander_level(
+                             board, BOARD_EXIO_PIN_TOUCH_RESET, 0);
+                if (result == ESP_OK)
+                {
+                    board->display.touch_reset_released = false;
+                    board->display.touch_hibernated = false;
+                    board->display.touch_configured = false;
+                }
+                else
+                {
+                    LOG_E("touch reset fallback failed: %#x",
+                          (unsigned int)result);
+                    _board_display_restore_suspend_irq(
+                        board, restore_active_irq);
+                }
             }
         }
         else
         {
-            result = esp_io_expander_set_level(
-                         board->io_expander, BOARD_EXIO_PIN_TOUCH_RESET, 0);
+            result = _board_display_set_expander_level(
+                         board, BOARD_EXIO_PIN_TOUCH_RESET, 0);
             if (result == ESP_OK)
             {
                 board->display.touch_reset_released = false;
+                board->display.touch_hibernated = false;
+                board->display.touch_configured = false;
             }
         }
     }
@@ -719,9 +791,18 @@ esp_err_t board_display_suspend_impl(board_context_t *board)
         board->display.power_phase == BOARD_DISPLAY_POWER_PHASE_ENABLED &&
         board->display.touch_irq_enabled;
     result = _board_display_suspend_touch(board, restore_active_irq);
+    if (result != ESP_OK)
+    {
+        LOG_E("suspend touch failed: %#x", (unsigned int)result);
+    }
     if (result == ESP_OK)
     {
         result = board_display_set_power_impl(board, false);
+        if (result != ESP_OK)
+        {
+            LOG_E("suspend panel power-off failed: %#x",
+                  (unsigned int)result);
+        }
     }
     if (result == ESP_OK)
     {
@@ -758,8 +839,8 @@ static void _board_display_hide_after_commit_failure(board_context_t *board,
 static esp_err_t _board_display_reset_touch(board_context_t *board,
         TickType_t *released_at)
 {
-    esp_err_t result = esp_io_expander_set_level(
-                           board->io_expander, BOARD_EXIO_PIN_TOUCH_RESET, 0);
+    esp_err_t result = _board_display_set_expander_level(
+                           board, BOARD_EXIO_PIN_TOUCH_RESET, 0);
     if (result == ESP_OK)
     {
         board->display.touch_reset_released = false;
@@ -772,8 +853,8 @@ static esp_err_t _board_display_reset_touch(board_context_t *board,
 
     if (result == ESP_OK)
     {
-        result = esp_io_expander_set_level(
-                     board->io_expander, BOARD_EXIO_PIN_TOUCH_RESET, 1);
+        result = _board_display_set_expander_level(
+                     board, BOARD_EXIO_PIN_TOUCH_RESET, 1);
     }
     if (result == ESP_OK)
     {

@@ -38,3 +38,28 @@ target_compile_options(board_display_state_test PRIVATE
 )
 
 add_test(NAME board_display_state_test COMMAND board_display_state_test)
+
+add_executable(board_display_suspend_test
+    board_display_suspend_test.c
+    ../../waveshare/esp32-s3-touch-amoled-1.8/board_display.c
+)
+
+target_include_directories(board_display_suspend_test PRIVATE
+    fakes
+    ../../include
+    ../../waveshare/esp32-s3-touch-amoled-1.8
+)
+
+target_compile_features(board_display_suspend_test PRIVATE c_std_11)
+target_compile_options(board_display_suspend_test PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+    -ffunction-sections
+    -fdata-sections
+)
+target_link_options(board_display_suspend_test PRIVATE
+    -Wl,--gc-sections
+)
+
+add_test(NAME board_display_suspend_test COMMAND board_display_suspend_test)

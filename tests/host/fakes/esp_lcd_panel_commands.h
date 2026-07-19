@@ -1,0 +1,6 @@
+#ifndef __ESP_LCD_PANEL_COMMANDS_H__
+#define __ESP_LCD_PANEL_COMMANDS_H__
+
+#define LCD_CMD_WRDISBV (0x51)
+
+#endif /* __ESP_LCD_PANEL_COMMANDS_H__ */
