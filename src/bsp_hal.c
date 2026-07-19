@@ -74,7 +74,7 @@ esp_err_t bsp_init(void)
     taskEXIT_CRITICAL(&s_registry_lock);
     if (!initialize)
     {
-        goto exit;
+        return result;
     }
 
     result = board_init();
@@ -92,7 +92,7 @@ esp_err_t bsp_init(void)
         _bsp_hal_clear_registry();
         s_init_state = BSP_INIT_STATE_FAILED;
         taskEXIT_CRITICAL(&s_registry_lock);
-        goto exit;
+        return result;
     }
 
     taskENTER_CRITICAL(&s_registry_lock);
@@ -101,7 +101,6 @@ esp_err_t bsp_init(void)
     s_init_state = BSP_INIT_STATE_READY;
     taskEXIT_CRITICAL(&s_registry_lock);
 
-exit:
     return result;
 }
 
@@ -127,7 +126,7 @@ esp_err_t bsp_deinit(void)
     taskEXIT_CRITICAL(&s_registry_lock);
     if (!deinitialize)
     {
-        goto exit;
+        return result;
     }
 
     result = board_deinit();
@@ -138,7 +137,6 @@ esp_err_t bsp_deinit(void)
                    BSP_INIT_STATE_UNINITIALIZED : BSP_INIT_STATE_FAILED;
     taskEXIT_CRITICAL(&s_registry_lock);
 
-exit:
     return result;
 }
 
@@ -173,7 +171,7 @@ esp_err_t bsp_get_wakeup_descriptor(bsp_wakeup_descriptor_t *descriptor)
     bool lock_owned = false;
     if (descriptor == NULL)
     {
-        goto exit;
+        return result;
     }
     taskENTER_CRITICAL(&s_registry_lock);
     lock_owned = true;
@@ -231,7 +229,7 @@ esp_err_t bsp_display_set_port(const bsp_display_port_t *port)
             port->panel == NULL || port->panel_io == NULL ||
             port->touch == NULL || port->touch_io == NULL)
     {
-        goto exit;
+        return result;
     }
 
     taskENTER_CRITICAL(&s_registry_lock);
@@ -263,7 +261,7 @@ esp_err_t bsp_hal_register_screen(const bsp_screen_ops_t *ops)
             !ops->set_brightness_temp || !ops->get_brightness ||
             !ops->set_enabled || !ops->set_power)
     {
-        goto exit;
+        return result;
     }
     taskENTER_CRITICAL(&s_registry_lock);
     lock_owned = true;
@@ -299,7 +297,7 @@ esp_err_t bsp_hal_register_rtc(const bsp_rtc_ops_t *ops)
     bool lock_owned = false;
     if (!ops || !ops->is_available || !ops->read || !ops->write)
     {
-        goto exit;
+        return result;
     }
     taskENTER_CRITICAL(&s_registry_lock);
     lock_owned = true;
@@ -335,7 +333,7 @@ esp_err_t bsp_hal_register_power(const bsp_power_ops_t *ops)
     bool lock_owned = false;
     if (!ops || !ops->is_available || !ops->get_info)
     {
-        goto exit;
+        return result;
     }
     taskENTER_CRITICAL(&s_registry_lock);
     lock_owned = true;
@@ -372,7 +370,7 @@ esp_err_t bsp_hal_register_input(const bsp_input_ops_t *ops)
     if (!ops || !ops->register_handler || !ops->unregister_handler ||
             !ops->prepare_sleep || !ops->complete_sleep)
     {
-        goto exit;
+        return result;
     }
     taskENTER_CRITICAL(&s_registry_lock);
     lock_owned = true;

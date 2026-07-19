@@ -305,7 +305,7 @@ static esp_err_t _board_input_register_handler(bsp_input_cb_t callback,
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (callback == NULL)
     {
-        goto exit;
+        return result;
     }
 
     taskENTER_CRITICAL(&s_handler_lock);
@@ -320,8 +320,6 @@ static esp_err_t _board_input_register_handler(bsp_input_cb_t callback,
         result = ESP_OK;
     }
     taskEXIT_CRITICAL(&s_handler_lock);
-
-exit:
     return result;
 }
 
@@ -345,7 +343,7 @@ static esp_err_t _board_input_unregister_handler(void)
 
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
     while (callbacks_active != 0)
     {
@@ -354,8 +352,6 @@ static esp_err_t _board_input_unregister_handler(void)
         callbacks_active = s_callbacks_active;
         taskEXIT_CRITICAL(&s_handler_lock);
     }
-
-exit:
     return result;
 }
 
@@ -365,7 +361,7 @@ static esp_err_t _board_input_prepare_sleep(uint32_t timeout_ms)
     if (!s_initialized || s_input_task == NULL || timeout_ms == 0 ||
             xTaskGetCurrentTaskHandle() == s_input_task)
     {
-        goto exit;
+        return result;
     }
 
     result = ESP_OK;
@@ -373,7 +369,7 @@ static esp_err_t _board_input_prepare_sleep(uint32_t timeout_ms)
     {
         if (!s_resume_pending)
         {
-            goto exit;
+            return result;
         }
         if (atomic_load(&s_resumed_generation) != s_quiesced_generation &&
                 !_board_input_wait_for_generation(s_task_resumed,
@@ -381,8 +377,7 @@ static esp_err_t _board_input_prepare_sleep(uint32_t timeout_ms)
                         s_quiesced_generation,
                         timeout_ms))
         {
-            result = ESP_ERR_TIMEOUT;
-            goto exit;
+            return ESP_ERR_TIMEOUT;
         }
         s_quiesced = false;
         s_resume_pending = false;
@@ -401,14 +396,11 @@ static esp_err_t _board_input_prepare_sleep(uint32_t timeout_ms)
     {
         atomic_store(&s_pause_requested, false);
         xTaskNotifyGive(s_input_task);
-        result = ESP_ERR_TIMEOUT;
-        goto exit;
+        return ESP_ERR_TIMEOUT;
     }
 
     s_quiesced = true;
     s_quiesced_generation = generation;
-
-exit:
     return result;
 }
 
@@ -418,13 +410,13 @@ static esp_err_t _board_input_complete_sleep(uint32_t timeout_ms)
     if (!s_initialized || s_input_task == NULL || timeout_ms == 0 ||
             xTaskGetCurrentTaskHandle() == s_input_task)
     {
-        goto exit;
+        return result;
     }
 
     result = ESP_OK;
     if (!s_quiesced)
     {
-        goto exit;
+        return result;
     }
 
     const unsigned generation = s_quiesced_generation;
@@ -432,7 +424,7 @@ static esp_err_t _board_input_complete_sleep(uint32_t timeout_ms)
     {
         s_quiesced = false;
         s_resume_pending = false;
-        goto exit;
+        return result;
     }
     if (!s_resume_pending)
     {
@@ -445,14 +437,11 @@ static esp_err_t _board_input_complete_sleep(uint32_t timeout_ms)
                                           generation,
                                           timeout_ms))
     {
-        result = ESP_ERR_TIMEOUT;
-        goto exit;
+        return ESP_ERR_TIMEOUT;
     }
 
     s_quiesced = false;
     s_resume_pending = false;
-
-exit:
     return result;
 }
 
@@ -601,18 +590,16 @@ esp_err_t board_input_init(board_tca9554_t *io_expander)
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (io_expander == NULL)
     {
-        goto exit;
+        return result;
     }
     if (s_initialized)
     {
-        result = ESP_OK;
-        goto exit;
+        return ESP_OK;
     }
     if (s_input_task != NULL || s_task_stopped != NULL ||
             s_task_paused != NULL || s_task_resumed != NULL)
     {
-        result = ESP_ERR_INVALID_STATE;
-        goto exit;
+        return ESP_ERR_INVALID_STATE;
     }
 
     const gpio_config_t home_config =
@@ -626,7 +613,7 @@ esp_err_t board_input_init(board_tca9554_t *io_expander)
     result = gpio_config(&home_config);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = board_init_stage_gate(BOARD_INIT_STAGE_INPUT_TASK);
@@ -662,8 +649,6 @@ esp_err_t board_input_init(board_tca9554_t *io_expander)
         s_initialized = true;
         LOG_I("input task ready: HOME(GPIO0) + POWER(TCA9554)");
     }
-
-exit:
     return result;
 }
 
@@ -672,26 +657,23 @@ esp_err_t board_input_deinit(void)
     esp_err_t result = ESP_OK;
     if (s_input_task != NULL && xTaskGetCurrentTaskHandle() == s_input_task)
     {
-        result = ESP_ERR_INVALID_STATE;
-        goto exit;
+        return ESP_ERR_INVALID_STATE;
     }
 
     result = _board_input_unregister_handler();
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = _board_input_stop_task();
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     _board_input_delete_sync_objects();
     result = gpio_reset_pin(BOARD_INPUT_HOME_GPIO);
     _board_input_clear_runtime_state();
-
-exit:
     return result;
 }

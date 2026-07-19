@@ -37,7 +37,7 @@ static esp_err_t _board_tca9554_read_register(board_tca9554_t *device,
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (device == NULL || device->i2c_device == NULL || value == NULL)
     {
-        goto exit;
+        return result;
     }
 
     xSemaphoreTake(device->lock, portMAX_DELAY);
@@ -49,7 +49,6 @@ static esp_err_t _board_tca9554_read_register(board_tca9554_t *device,
                                          BOARD_TCA9554_I2C_TIMEOUT_MS);
     xSemaphoreGive(device->lock);
 
-exit:
     return result;
 }
 
@@ -60,7 +59,7 @@ static esp_err_t _board_tca9554_write_register(board_tca9554_t *device,
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (device == NULL || device->i2c_device == NULL)
     {
-        goto exit;
+        return result;
     }
 
     const uint8_t data[] = {address, value};
@@ -71,7 +70,6 @@ static esp_err_t _board_tca9554_write_register(board_tca9554_t *device,
                                  BOARD_TCA9554_I2C_TIMEOUT_MS);
     xSemaphoreGive(device->lock);
 
-exit:
     return result;
 }
 
@@ -85,7 +83,7 @@ static esp_err_t _board_tca9554_read_input_reg(esp_io_expander_handle_t handle, 
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (handle == NULL || value == NULL)
     {
-        goto exit;
+        return result;
     }
 
     uint8_t raw = 0;
@@ -95,7 +93,6 @@ static esp_err_t _board_tca9554_read_input_reg(esp_io_expander_handle_t handle, 
         *value = raw;
     }
 
-exit:
     return result;
 }
 
@@ -104,7 +101,7 @@ static esp_err_t _board_tca9554_write_output_reg(esp_io_expander_handle_t handle
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (handle == NULL)
     {
-        goto exit;
+        return result;
     }
 
     board_tca9554_t *device = _board_tca9554_from_base(handle);
@@ -115,23 +112,18 @@ static esp_err_t _board_tca9554_write_output_reg(esp_io_expander_handle_t handle
         device->output = output;
     }
 
-exit:
     return result;
 }
 
 static esp_err_t _board_tca9554_read_output_reg(esp_io_expander_handle_t handle, uint32_t *value)
 {
-    esp_err_t result = ESP_ERR_INVALID_ARG;
     if (handle == NULL || value == NULL)
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
     *value = _board_tca9554_from_base(handle)->output;
-    result = ESP_OK;
-
-exit:
-    return result;
+    return ESP_OK;
 }
 
 static esp_err_t _board_tca9554_write_direction_reg(esp_io_expander_handle_t handle, uint32_t value)
@@ -139,7 +131,7 @@ static esp_err_t _board_tca9554_write_direction_reg(esp_io_expander_handle_t han
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (handle == NULL)
     {
-        goto exit;
+        return result;
     }
 
     board_tca9554_t *device = _board_tca9554_from_base(handle);
@@ -151,23 +143,18 @@ static esp_err_t _board_tca9554_write_direction_reg(esp_io_expander_handle_t han
         device->direction = direction;
     }
 
-exit:
     return result;
 }
 
 static esp_err_t _board_tca9554_read_direction_reg(esp_io_expander_handle_t handle, uint32_t *value)
 {
-    esp_err_t result = ESP_ERR_INVALID_ARG;
     if (handle == NULL || value == NULL)
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
     *value = _board_tca9554_from_base(handle)->direction;
-    result = ESP_OK;
-
-exit:
-    return result;
+    return ESP_OK;
 }
 
 static esp_err_t _board_tca9554_reset(esp_io_expander_handle_t handle)
@@ -195,15 +182,14 @@ esp_err_t board_tca9554_create(i2c_master_bus_handle_t i2c_bus,
     board_tca9554_t *device = NULL;
     if (i2c_bus == NULL || out_device == NULL)
     {
-        goto exit;
+        return result;
     }
     *out_device = NULL;
 
     device = calloc(1, sizeof(*device));
     if (device == NULL)
     {
-        result = ESP_ERR_NO_MEM;
-        goto exit;
+        return ESP_ERR_NO_MEM;
     }
 
     device->lock = xSemaphoreCreateMutex();
@@ -245,15 +231,14 @@ esp_err_t board_tca9554_create(i2c_master_bus_handle_t i2c_bus,
         if (cleanup_ret != ESP_OK)
         {
             *out_device = device;
-            result = cleanup_ret;
-            goto exit;
+            return cleanup_ret;
         }
         device->i2c_device = NULL;
         goto cleanup;
     }
 
     *out_device = device;
-    goto exit;
+    return result;
 
 cleanup:
     if (device->lock != NULL)
@@ -261,25 +246,22 @@ cleanup:
         vSemaphoreDelete(device->lock);
     }
     free(device);
-
-exit:
     return result;
 }
 
 esp_err_t board_tca9554_destroy(board_tca9554_t *device)
 {
-    esp_err_t result = ESP_OK;
     if (device == NULL)
     {
-        goto exit;
+        return ESP_OK;
     }
 
     if (device->i2c_device != NULL)
     {
-        result = i2c_master_bus_rm_device(device->i2c_device);
+        esp_err_t result = i2c_master_bus_rm_device(device->i2c_device);
         if (result != ESP_OK)
         {
-            goto exit;
+            return result;
         }
         device->i2c_device = NULL;
     }
@@ -287,9 +269,7 @@ esp_err_t board_tca9554_destroy(board_tca9554_t *device)
     vSemaphoreDelete(device->lock);
     device->lock = NULL;
     free(device);
-
-exit:
-    return result;
+    return ESP_OK;
 }
 
 esp_io_expander_handle_t board_tca9554_get_expander(board_tca9554_t *device)

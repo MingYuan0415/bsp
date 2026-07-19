@@ -307,7 +307,7 @@ esp_err_t board_display_init(board_context_t *board)
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (board == NULL || board->i2c_bus == NULL || board->io_expander == NULL)
     {
-        goto exit;
+        return result;
     }
 
     board->display.port.width = BOARD_LCD_HOR_RES;
@@ -317,14 +317,14 @@ esp_err_t board_display_init(board_context_t *board)
     if (result != ESP_OK)
     {
         (void)board_display_deinit(board);
-        goto exit;
+        return result;
     }
 
     result = _board_touch_init(board);
     if (result != ESP_OK)
     {
         (void)board_display_deinit(board);
-        goto exit;
+        return result;
     }
 
     board->display.power_phase = BOARD_DISPLAY_POWER_PHASE_PANEL_INITIALIZED;
@@ -347,8 +347,6 @@ esp_err_t board_display_init(board_context_t *board)
     {
         (void)board_display_deinit(board);
     }
-
-exit:
     return result;
 }
 
@@ -358,22 +356,21 @@ esp_err_t board_display_set_brightness_impl(board_context_t *board,
     esp_err_t result = ESP_ERR_INVALID_STATE;
     if (board == NULL || board->display.port.panel_io == NULL)
     {
-        goto exit;
+        return result;
     }
 
     if (!board->display.rail_on || !board->display.panel_initialized)
     {
         board->display.brightness = brightness;
         board->display.brightness_applied = false;
-        result = ESP_OK;
-        goto exit;
+        return ESP_OK;
     }
 
     result = _board_lcd_tx_param_8b(board, LCD_CMD_WRCTRLD,
                                     LCD_WRCTRLD_BCTRL_BIT);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = _board_lcd_tx_param_8b(board, LCD_CMD_WRDISBV, brightness);
@@ -385,8 +382,6 @@ esp_err_t board_display_set_brightness_impl(board_context_t *board,
                                      BOARD_DISPLAY_POWER_PHASE_ENABLED :
                                      BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED;
     }
-
-exit:
     return result;
 }
 
@@ -395,20 +390,19 @@ esp_err_t board_display_set_enabled_impl(board_context_t *board, bool on)
     esp_err_t result = ESP_ERR_INVALID_STATE;
     if (board == NULL || board->display.port.panel == NULL)
     {
-        goto exit;
+        return result;
     }
 
     if (on && (!board->display.rail_on ||
                !board->display.panel_initialized ||
                !board->display.brightness_applied))
     {
-        goto exit;
+        return result;
     }
 
     if (board->display.enabled == on)
     {
-        result = ESP_OK;
-        goto exit;
+        return ESP_OK;
     }
 
     result = esp_lcd_panel_disp_on_off(board->display.port.panel, on);
@@ -425,8 +419,6 @@ esp_err_t board_display_set_enabled_impl(board_context_t *board, bool on)
                 BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED;
         }
     }
-
-exit:
     return result;
 }
 
@@ -508,7 +500,7 @@ static esp_err_t _board_display_prepare_power_impl(board_context_t *board)
     if (board == NULL || board->io_expander == NULL ||
             board->display.port.panel == NULL)
     {
-        goto exit;
+        return result;
     }
 
     result = ESP_OK;
@@ -550,8 +542,6 @@ static esp_err_t _board_display_prepare_power_impl(board_context_t *board)
     {
         result = ESP_ERR_INVALID_STATE;
     }
-
-exit:
     return result;
 }
 
@@ -624,7 +614,7 @@ static esp_err_t _board_display_power_off(board_context_t *board)
             !board->display.rail_on)
     {
         board->display.enabled = false;
-        goto exit;
+        return result;
     }
 
     result = board_display_set_enabled_impl(board, false);
@@ -632,7 +622,7 @@ static esp_err_t _board_display_power_off(board_context_t *board)
     {
         /* DISP_OFF failure must not leave the input side hibernated. */
         _board_display_restore_after_off_failure(board);
-        goto exit;
+        return result;
     }
 
     if (board->display.rail_on &&
@@ -652,8 +642,6 @@ static esp_err_t _board_display_power_off(board_context_t *board)
     {
         _board_display_mark_power_off(board);
     }
-
-exit:
     return result;
 }
 
@@ -663,7 +651,7 @@ esp_err_t board_display_set_power_impl(board_context_t *board, bool on)
     if (board == NULL || board->io_expander == NULL ||
             board->display.port.panel == NULL)
     {
-        goto exit;
+        return result;
     }
 
     if (on)
@@ -678,8 +666,6 @@ esp_err_t board_display_set_power_impl(board_context_t *board, bool on)
     {
         result = _board_display_power_off(board);
     }
-
-exit:
     return result;
 }
 
@@ -776,13 +762,12 @@ esp_err_t board_display_suspend_impl(board_context_t *board)
             board->display.port.panel == NULL ||
             board->display.port.touch_io == NULL)
     {
-        goto exit;
+        return result;
     }
 
     if (_board_display_is_suspend_committed(&board->display))
     {
-        result = ESP_OK;
-        goto exit;
+        return ESP_OK;
     }
 
     const bool restore_active_irq =
@@ -808,8 +793,6 @@ esp_err_t board_display_suspend_impl(board_context_t *board)
     {
         board->display.screen_phase = BOARD_SCREEN_PHASE_SUSPENDED;
     }
-
-exit:
     return result;
 }
 
@@ -901,7 +884,7 @@ esp_err_t board_display_resume_prepare_impl(board_context_t *board)
             board->display.port.panel == NULL ||
             board->display.port.touch_io == NULL)
     {
-        goto exit;
+        return result;
     }
 
     if (board->display.screen_phase == BOARD_SCREEN_PHASE_TOUCH_CONFIGURED &&
@@ -909,8 +892,7 @@ esp_err_t board_display_resume_prepare_impl(board_context_t *board)
             BOARD_DISPLAY_POWER_PHASE_BRIGHTNESS_APPLIED &&
             !board->display.enabled && !board->display.touch_irq_enabled)
     {
-        result = ESP_OK;
-        goto exit;
+        return ESP_OK;
     }
 
     result = board_display_suspend_impl(board);
@@ -925,8 +907,6 @@ esp_err_t board_display_resume_prepare_impl(board_context_t *board)
         result = _board_display_finish_resume_prepare(
                      board, touch_released_at);
     }
-
-exit:
     return result;
 }
 
@@ -935,38 +915,35 @@ esp_err_t board_display_resume_commit_impl(board_context_t *board)
     esp_err_t result = ESP_ERR_INVALID_STATE;
     if (board == NULL || board->display.port.panel == NULL)
     {
-        goto exit;
+        return result;
     }
 
     if (board->display.screen_phase == BOARD_SCREEN_PHASE_ACTIVE &&
             board->display.enabled && board->display.touch_irq_enabled)
     {
-        result = ESP_OK;
-        goto exit;
+        return ESP_OK;
     }
     if (board->display.screen_phase != BOARD_SCREEN_PHASE_TOUCH_CONFIGURED ||
             board->display.touch_irq_enabled)
     {
-        goto exit;
+        return result;
     }
 
     result = board_display_set_enabled_impl(board, true);
     if (result != ESP_OK)
     {
         _board_display_hide_after_commit_failure(board, false);
-        goto exit;
+        return result;
     }
 
     result = gpio_intr_enable(BOARD_I2C_PIN_INT);
     if (result != ESP_OK)
     {
         _board_display_hide_after_commit_failure(board, true);
-        goto exit;
+        return result;
     }
     board->display.touch_irq_enabled = true;
     board->display.screen_phase = BOARD_SCREEN_PHASE_ACTIVE;
-
-exit:
     return result;
 }
 
@@ -1055,7 +1032,7 @@ esp_err_t board_display_deinit(board_context_t *board)
     esp_err_t first_error = ESP_ERR_INVALID_ARG;
     if (board == NULL)
     {
-        goto exit;
+        return first_error;
     }
 
     first_error = ESP_OK;
@@ -1066,7 +1043,7 @@ esp_err_t board_display_deinit(board_context_t *board)
         first_error = board_display_set_power_impl(board, false);
         if (first_error != ESP_OK)
         {
-            goto exit;
+            return first_error;
         }
     }
 
@@ -1081,7 +1058,5 @@ esp_err_t board_display_deinit(board_context_t *board)
     {
         memset(&board->display, 0, sizeof(board->display));
     }
-
-exit:
     return first_error;
 }

@@ -39,7 +39,7 @@ static esp_err_t _board_i2c_init(board_context_t *board)
     esp_err_t result = ESP_OK;
     if (board->i2c_bus != NULL)
     {
-        goto exit;
+        return result;
     }
 
     const i2c_master_bus_config_t i2c_bus_conf =
@@ -51,10 +51,7 @@ static esp_err_t _board_i2c_init(board_context_t *board)
         .flags      = { .enable_internal_pullup = 1, },
     };
 
-    result = i2c_new_master_bus(&i2c_bus_conf, &board->i2c_bus);
-
-exit:
-    return result;
+    return i2c_new_master_bus(&i2c_bus_conf, &board->i2c_bus);
 }
 
 static esp_err_t _board_io_expander_init(board_context_t *board)
@@ -64,14 +61,14 @@ static esp_err_t _board_io_expander_init(board_context_t *board)
                                             &board->io_expander_device);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
     board->io_expander = board_tca9554_get_expander(board->io_expander_device);
 
     result = board_init_stage_gate(BOARD_INIT_STAGE_IO_CONFIG);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = esp_io_expander_set_dir(
@@ -81,35 +78,35 @@ static esp_err_t _board_io_expander_init(board_context_t *board)
                  IO_EXPANDER_OUTPUT);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = esp_io_expander_set_dir(
                  board->io_expander, BOARD_EXIO_PIN_PWR_BUTTON, IO_EXPANDER_INPUT);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = esp_io_expander_set_level(
                  board->io_expander, BOARD_EXIO_PIN_LCD_RESET, 0);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = esp_io_expander_set_level(
                  board->io_expander, BOARD_EXIO_PIN_LCD_PWR_EN, 0);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = esp_io_expander_set_level(
                  board->io_expander, BOARD_EXIO_PIN_TOUCH_RESET, 0);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     vTaskDelay(pdMS_TO_TICKS(BOARD_IO_BOOT_DELAY_MS));
@@ -118,21 +115,18 @@ static esp_err_t _board_io_expander_init(board_context_t *board)
                  board->io_expander, BOARD_EXIO_PIN_LCD_RESET, 1);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = esp_io_expander_set_level(
                  board->io_expander, BOARD_EXIO_PIN_LCD_PWR_EN, 1);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
-    result = esp_io_expander_set_level(
-                 board->io_expander, BOARD_EXIO_PIN_TOUCH_RESET, 1);
-
-exit:
-    return result;
+    return esp_io_expander_set_level(
+               board->io_expander, BOARD_EXIO_PIN_TOUCH_RESET, 1);
 }
 
 static bool _screen_is_available(void)
@@ -267,7 +261,7 @@ static esp_err_t _board_io_expander_deinit(board_context_t *board)
     esp_err_t first_error = ESP_OK;
     if (board->io_expander == NULL)
     {
-        goto exit;
+        return first_error;
     }
 
     esp_err_t result = esp_io_expander_set_level(
@@ -279,8 +273,6 @@ static esp_err_t _board_io_expander_deinit(board_context_t *board)
     result = esp_io_expander_set_level(
                  board->io_expander, BOARD_EXIO_PIN_TOUCH_RESET, 0);
     _board_record_cleanup_error(&first_error, result);
-
-exit:
     return first_error;
 }
 
@@ -297,7 +289,7 @@ esp_err_t board_deinit(void)
     _board_record_cleanup_error(&first_error, input_result);
     if (input_result != ESP_OK)
     {
-        goto exit;
+        return first_error;
     }
     const bool display_handles_released =
         s_board.display.port.panel == NULL &&
@@ -335,8 +327,6 @@ esp_err_t board_deinit(void)
             s_board.i2c_bus = NULL;
         }
     }
-
-exit:
     return first_error;
 }
 
@@ -349,7 +339,7 @@ static esp_err_t _board_init_required_resources(void)
     }
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = board_init_stage_gate(BOARD_INIT_STAGE_IO_EXPANDER);
@@ -359,7 +349,7 @@ static esp_err_t _board_init_required_resources(void)
     }
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     result = board_init_stage_gate(BOARD_INIT_STAGE_INPUT);
@@ -369,7 +359,7 @@ static esp_err_t _board_init_required_resources(void)
     }
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
     s_board.capabilities |= BSP_CAPABILITY_INPUT;
 
@@ -382,8 +372,6 @@ static esp_err_t _board_init_required_resources(void)
     {
         s_board.capabilities |= BSP_CAPABILITY_DISPLAY | BSP_CAPABILITY_TOUCH;
     }
-
-exit:
     return result;
 }
 
@@ -428,7 +416,7 @@ static esp_err_t _board_register_interfaces(void)
     if (result != ESP_OK)
     {
         LOG_E("screen ops register failed: %s", esp_err_to_name(result));
-        goto exit;
+        return result;
     }
 
     const bsp_display_port_t port =
@@ -445,8 +433,6 @@ static esp_err_t _board_register_interfaces(void)
     {
         result = bsp_display_set_port(&port);
     }
-
-exit:
     return result;
 }
 
@@ -455,7 +441,7 @@ esp_err_t board_init(void)
     esp_err_t result = ESP_OK;
     if (s_board.initialized)
     {
-        goto exit;
+        return result;
     }
 
     if (_board_has_resources())
@@ -463,7 +449,7 @@ esp_err_t board_init(void)
         result = board_deinit();
         if (result != ESP_OK)
         {
-            goto exit;
+            return result;
         }
     }
 
@@ -487,7 +473,7 @@ esp_err_t board_init(void)
     s_board.initialized = true;
     LOG_I("board init done - screen registered, display %dx%d",
           BOARD_LCD_HOR_RES, BOARD_LCD_VER_RES);
-    goto exit;
+    return result;
 
 fail:
     {
@@ -497,7 +483,5 @@ fail:
             LOG_E("board init rollback failed: %s", esp_err_to_name(cleanup_ret));
         }
     }
-
-exit:
     return result;
 }

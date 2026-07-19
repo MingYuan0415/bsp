@@ -88,28 +88,24 @@ static bool _pcf85063_bcd_decode(uint8_t raw, uint8_t allowed_mask,
                                  uint8_t minimum, uint8_t maximum,
                                  uint8_t *value)
 {
-    bool valid = false;
     if (value == NULL || (raw & (uint8_t)~allowed_mask) != 0)
     {
-        goto exit;
+        return false;
     }
     const uint8_t masked = raw & allowed_mask;
     const uint8_t high = masked >> 4;
     const uint8_t low = masked & 0x0FU;
     if (high > 9U || low > 9U)
     {
-        goto exit;
+        return false;
     }
     const uint8_t decoded = (uint8_t)(high * 10U + low);
     if (decoded < minimum || decoded > maximum)
     {
-        goto exit;
+        return false;
     }
     *value = decoded;
-    valid = true;
-
-exit:
-    return valid;
+    return true;
 }
 
 static uint8_t _pcf85063_dec_to_bcd(uint8_t value)
@@ -120,50 +116,41 @@ static uint8_t _pcf85063_dec_to_bcd(uint8_t value)
 static esp_err_t _pcf85063_read_registers(
     mt_pcf85063_t *device, uint8_t reg_addr, uint8_t *data, size_t len)
 {
-    esp_err_t result = ESP_ERR_INVALID_ARG;
     if (!device || !device->rtc_dev || !data || len == 0)
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
-    result = i2c_master_transmit_receive(device->rtc_dev,
-                                         &reg_addr,
-                                         sizeof(reg_addr),
-                                         data,
-                                         len,
-                                         MT_PCF85063_I2C_TIMEOUT_MS);
-
-exit:
-    return result;
+    return i2c_master_transmit_receive(device->rtc_dev,
+                                       &reg_addr,
+                                       sizeof(reg_addr),
+                                       data,
+                                       len,
+                                       MT_PCF85063_I2C_TIMEOUT_MS);
 }
 
 static esp_err_t _pcf85063_write_registers(
     mt_pcf85063_t *device, uint8_t reg_addr,
     const uint8_t *data, size_t len)
 {
-    esp_err_t result = ESP_ERR_INVALID_ARG;
     if (!device || !device->rtc_dev || !data || len == 0)
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
     uint8_t buffer[1 + MT_PCF85063_TIME_REG_COUNT] = {0};
     if (len > (sizeof(buffer) - 1U))
     {
-        result = ESP_ERR_INVALID_SIZE;
-        goto exit;
+        return ESP_ERR_INVALID_SIZE;
     }
 
     buffer[0] = reg_addr;
     memcpy(&buffer[1], data, len);
 
-    result = i2c_master_transmit(device->rtc_dev,
-                                 buffer,
-                                 len + 1U,
-                                 MT_PCF85063_I2C_TIMEOUT_MS);
-
-exit:
-    return result;
+    return i2c_master_transmit(device->rtc_dev,
+                               buffer,
+                               len + 1U,
+                               MT_PCF85063_I2C_TIMEOUT_MS);
 }
 
 static esp_err_t _pcf85063_read_control_1(mt_pcf85063_t *device, uint8_t *control_1)
@@ -182,7 +169,7 @@ static esp_err_t _pcf85063_normalize_mode(mt_pcf85063_t *device)
     esp_err_t result = _pcf85063_read_control_1(device, &control_1);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     uint8_t normalized = (uint8_t)(control_1 &
@@ -193,18 +180,15 @@ static esp_err_t _pcf85063_normalize_mode(mt_pcf85063_t *device)
     {
         result = _pcf85063_write_control_1(device, normalized);
     }
-
-exit:
     return result;
 }
 
 static esp_err_t _pcf85063_validate_time_for_set(
     const struct tm *timeinfo, struct tm *normalized_time)
 {
-    esp_err_t result = ESP_ERR_INVALID_ARG;
     if (!timeinfo || !normalized_time)
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
     if (timeinfo->tm_year < 100 || timeinfo->tm_year > 199 ||
@@ -213,7 +197,7 @@ static esp_err_t _pcf85063_validate_time_for_set(
             timeinfo->tm_min < 0 || timeinfo->tm_min > 59 ||
             timeinfo->tm_sec < 0 || timeinfo->tm_sec > 59)
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
     const int year = timeinfo->tm_year + 1900;
@@ -221,7 +205,7 @@ static esp_err_t _pcf85063_validate_time_for_set(
     if (timeinfo->tm_mday < 1 ||
             timeinfo->tm_mday > _pcf85063_days_in_month(year, month))
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
     *normalized_time = *timeinfo;
@@ -230,10 +214,7 @@ static esp_err_t _pcf85063_validate_time_for_set(
     normalized_time->tm_yday = _pcf85063_day_of_year(
                                    year, month, timeinfo->tm_mday);
     normalized_time->tm_isdst = 0;
-    result = ESP_OK;
-
-exit:
-    return result;
+    return ESP_OK;
 }
 
 esp_err_t mt_pcf85063_create(i2c_master_bus_handle_t i2c_bus, mt_pcf85063_t **out_device)
@@ -242,7 +223,7 @@ esp_err_t mt_pcf85063_create(i2c_master_bus_handle_t i2c_bus, mt_pcf85063_t **ou
     mt_pcf85063_t *device = NULL;
     if (!i2c_bus || !out_device)
     {
-        goto exit;
+        return result;
     }
 
     *out_device = NULL;
@@ -250,8 +231,7 @@ esp_err_t mt_pcf85063_create(i2c_master_bus_handle_t i2c_bus, mt_pcf85063_t **ou
     device = calloc(1, sizeof(*device));
     if (!device)
     {
-        result = ESP_ERR_NO_MEM;
-        goto exit;
+        return ESP_ERR_NO_MEM;
     }
 
     device->lock = xSemaphoreCreateMutex();
@@ -283,12 +263,12 @@ esp_err_t mt_pcf85063_create(i2c_master_bus_handle_t i2c_bus, mt_pcf85063_t **ou
             *out_device = device;
             result = cleanup_ret;
         }
-        goto exit;
+        return result;
     }
 
     device->initialized = true;
     *out_device = device;
-    goto exit;
+    return result;
 
 cleanup:
     if (device->lock != NULL)
@@ -296,25 +276,22 @@ cleanup:
         vSemaphoreDelete(device->lock);
     }
     free(device);
-
-exit:
     return result;
 }
 
 esp_err_t mt_pcf85063_destroy(mt_pcf85063_t *device)
 {
-    esp_err_t result = ESP_OK;
     if (!device)
     {
-        goto exit;
+        return ESP_OK;
     }
 
     if (device->rtc_dev)
     {
-        result = i2c_master_bus_rm_device(device->rtc_dev);
+        esp_err_t result = i2c_master_bus_rm_device(device->rtc_dev);
         if (result != ESP_OK)
         {
-            goto exit;
+            return result;
         }
         device->rtc_dev = NULL;
     }
@@ -326,9 +303,7 @@ esp_err_t mt_pcf85063_destroy(mt_pcf85063_t *device)
     }
 
     free(device);
-
-exit:
-    return result;
+    return ESP_OK;
 }
 
 bool mt_pcf85063_is_ready(const mt_pcf85063_t *device)
@@ -339,7 +314,6 @@ bool mt_pcf85063_is_ready(const mt_pcf85063_t *device)
 static esp_err_t _pcf85063_decode_time(
     const uint8_t raw_time[MT_PCF85063_TIME_REG_COUNT], struct tm *value)
 {
-    esp_err_t result = ESP_ERR_INVALID_RESPONSE;
     uint8_t second;
     uint8_t minute;
     uint8_t hour;
@@ -364,14 +338,14 @@ static esp_err_t _pcf85063_decode_time(
                              0, 99, &year_offset);
     if (!valid)
     {
-        goto exit;
+        return ESP_ERR_INVALID_RESPONSE;
     }
 
     const int year = 2000 + year_offset;
     if (day > _pcf85063_days_in_month(year, month) ||
             weekday != _pcf85063_weekday(year, month, day))
     {
-        goto exit;
+        return ESP_ERR_INVALID_RESPONSE;
     }
 
     *value = (struct tm)
@@ -386,10 +360,7 @@ static esp_err_t _pcf85063_decode_time(
         .tm_yday = _pcf85063_day_of_year(year, month, day),
         .tm_isdst = 0,
     };
-    result = ESP_OK;
-
-exit:
-    return result;
+    return ESP_OK;
 }
 
 esp_err_t mt_pcf85063_get_time(mt_pcf85063_t *device, struct tm *timeinfo)
@@ -398,13 +369,12 @@ esp_err_t mt_pcf85063_get_time(mt_pcf85063_t *device, struct tm *timeinfo)
     bool lock_owned = false;
     if (!device || !timeinfo)
     {
-        goto exit;
+        return result;
     }
 
     if (!device->initialized || !device->lock)
     {
-        result = ESP_ERR_INVALID_STATE;
-        goto exit;
+        return ESP_ERR_INVALID_STATE;
     }
 
     xSemaphoreTake(device->lock, portMAX_DELAY);
@@ -459,20 +429,19 @@ esp_err_t mt_pcf85063_set_time(mt_pcf85063_t *device, const struct tm *timeinfo)
     bool lock_owned = false;
     if (!device || !timeinfo)
     {
-        goto exit;
+        return result;
     }
 
     if (!device->initialized || !device->lock)
     {
-        result = ESP_ERR_INVALID_STATE;
-        goto exit;
+        return ESP_ERR_INVALID_STATE;
     }
 
     struct tm normalized = {0};
     result = _pcf85063_validate_time_for_set(timeinfo, &normalized);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     xSemaphoreTake(device->lock, portMAX_DELAY);

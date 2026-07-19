@@ -36,7 +36,7 @@ static esp_err_t _board_i2c_panel_io_rx(esp_lcd_panel_io_t *base,
     if (base == NULL || parameters == NULL || parameter_size == 0 ||
             command < 0 || command > UINT8_MAX)
     {
-        goto exit;
+        return result;
     }
 
     board_i2c_panel_io_t *io = _board_i2c_panel_io_from_base(base);
@@ -50,7 +50,6 @@ static esp_err_t _board_i2c_panel_io_rx(esp_lcd_panel_io_t *base,
                                          BOARD_I2C_PANEL_IO_TIMEOUT_MS);
     xSemaphoreGive(io->lock);
 
-exit:
     return result;
 }
 
@@ -64,7 +63,7 @@ static esp_err_t _board_i2c_panel_io_tx(esp_lcd_panel_io_t *base,
             parameter_size > BOARD_I2C_PANEL_IO_MAX_PARAM_SIZE ||
             (parameter_size > 0 && parameters == NULL))
     {
-        goto exit;
+        return result;
     }
 
     board_i2c_panel_io_t *io = _board_i2c_panel_io_from_base(base);
@@ -82,7 +81,6 @@ static esp_err_t _board_i2c_panel_io_tx(esp_lcd_panel_io_t *base,
                                  BOARD_I2C_PANEL_IO_TIMEOUT_MS);
     xSemaphoreGive(io->lock);
 
-exit:
     return result;
 }
 
@@ -110,23 +108,20 @@ static esp_err_t _board_i2c_panel_io_register_callbacks(esp_lcd_panel_io_t *base
 
 static esp_err_t _board_i2c_panel_io_delete(esp_lcd_panel_io_t *base)
 {
-    esp_err_t result = ESP_ERR_INVALID_ARG;
     if (base == NULL)
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
     board_i2c_panel_io_t *io = _board_i2c_panel_io_from_base(base);
-    result = i2c_master_bus_rm_device(io->device);
+    esp_err_t result = i2c_master_bus_rm_device(io->device);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     vSemaphoreDelete(io->lock);
     free(io);
-
-exit:
     return result;
 }
 
@@ -139,15 +134,14 @@ esp_err_t board_i2c_panel_io_create(i2c_master_bus_handle_t bus,
     board_i2c_panel_io_t *io = NULL;
     if (bus == NULL || clock_speed_hz == 0 || out_io == NULL)
     {
-        goto exit;
+        return result;
     }
     *out_io = NULL;
 
     io = calloc(1, sizeof(*io));
     if (io == NULL)
     {
-        result = ESP_ERR_NO_MEM;
-        goto exit;
+        return ESP_ERR_NO_MEM;
     }
 
     io->lock = xSemaphoreCreateMutex();
@@ -175,7 +169,7 @@ esp_err_t board_i2c_panel_io_create(i2c_master_bus_handle_t bus,
     io->base.del = _board_i2c_panel_io_delete;
     io->base.register_event_callbacks = _board_i2c_panel_io_register_callbacks;
     *out_io = &io->base;
-    goto exit;
+    return result;
 
 cleanup:
     if (io->lock != NULL)
@@ -183,7 +177,5 @@ cleanup:
         vSemaphoreDelete(io->lock);
     }
     free(io);
-
-exit:
     return result;
 }

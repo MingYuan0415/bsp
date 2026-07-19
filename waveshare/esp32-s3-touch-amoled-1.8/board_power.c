@@ -20,23 +20,21 @@ static bool _board_power_is_available(void)
 
 static esp_err_t _board_power_get_info_impl(bsp_power_info_t *info)
 {
-    esp_err_t result = ESP_ERR_INVALID_ARG;
     if (!info)
     {
-        goto exit;
+        return ESP_ERR_INVALID_ARG;
     }
 
     if (!_board_power_is_available())
     {
-        result = ESP_ERR_NOT_SUPPORTED;
-        goto exit;
+        return ESP_ERR_NOT_SUPPORTED;
     }
 
     mt_axp2101_power_info_t axp_info = {0};
-    result = mt_axp2101_get_power_info(s_pmu, &axp_info);
+    esp_err_t result = mt_axp2101_get_power_info(s_pmu, &axp_info);
     if (result != ESP_OK)
     {
-        goto exit;
+        return result;
     }
 
     info->battery_voltage_mv = axp_info.battery_voltage_mv;
@@ -49,7 +47,6 @@ static esp_err_t _board_power_get_info_impl(bsp_power_info_t *info)
     info->vbus_voltage_mv    = axp_info.vbus_voltage_mv;
     info->system_voltage_mv  = axp_info.system_voltage_mv;
 
-exit:
     return result;
 }
 
@@ -64,7 +61,7 @@ esp_err_t board_power_init(i2c_master_bus_handle_t i2c_bus)
     esp_err_t result = ESP_ERR_INVALID_ARG;
     if (!i2c_bus)
     {
-        goto exit;
+        return result;
     }
 
     if (s_pmu != NULL && !mt_axp2101_is_ready(s_pmu))
@@ -72,16 +69,14 @@ esp_err_t board_power_init(i2c_master_bus_handle_t i2c_bus)
         esp_err_t cleanup_ret = mt_axp2101_destroy(s_pmu);
         if (cleanup_ret != ESP_OK)
         {
-            result = cleanup_ret;
-            goto exit;
+            return cleanup_ret;
         }
         s_pmu = NULL;
         s_power_registered = false;
     }
     if (s_pmu != NULL && s_power_registered)
     {
-        result = ESP_OK;
-        goto exit;
+        return ESP_OK;
     }
 
     result = ESP_OK;
@@ -90,7 +85,7 @@ esp_err_t board_power_init(i2c_master_bus_handle_t i2c_bus)
         result = mt_axp2101_create(i2c_bus, &s_pmu);
         if (result != ESP_OK)
         {
-            goto exit;
+            return result;
         }
     }
 
@@ -103,29 +98,25 @@ esp_err_t board_power_init(i2c_master_bus_handle_t i2c_bus)
             s_pmu = NULL;
         }
         s_power_registered = false;
-        goto exit;
+        return result;
     }
     s_power_registered = true;
 
-exit:
     return result;
 }
 
 esp_err_t board_power_deinit(void)
 {
-    esp_err_t result = ESP_OK;
     if (s_pmu == NULL)
     {
-        goto exit;
+        return ESP_OK;
     }
 
-    result = mt_axp2101_destroy(s_pmu);
+    esp_err_t result = mt_axp2101_destroy(s_pmu);
     if (result == ESP_OK)
     {
         s_pmu = NULL;
         s_power_registered = false;
     }
-
-exit:
     return result;
 }
