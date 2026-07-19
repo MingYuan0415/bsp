@@ -125,6 +125,12 @@ esp_err_t i2s_new_channel(const i2s_chan_config_t *config,
                           i2s_chan_handle_t *rx_channel)
 {
     assert(config != NULL && tx_channel != NULL && rx_channel != NULL);
+    assert(!s_state.i2s_allocated[BOARD_AUDIO_FAKE_TX_CHANNEL]);
+    assert(!s_state.i2s_allocated[BOARD_AUDIO_FAKE_RX_CHANNEL]);
+    ++s_state.i2s_create_calls;
+    s_state.i2s_auto_clear_after_cb = config->auto_clear_after_cb;
+    s_state.i2s_allocated[BOARD_AUDIO_FAKE_TX_CHANNEL] = true;
+    s_state.i2s_allocated[BOARD_AUDIO_FAKE_RX_CHANNEL] = true;
     *tx_channel = &s_tx_channel;
     *rx_channel = &s_rx_channel;
     return ESP_OK;
@@ -133,8 +139,8 @@ esp_err_t i2s_new_channel(const i2s_chan_config_t *config,
 esp_err_t i2s_channel_init_std_mode(i2s_chan_handle_t channel,
                                     const i2s_std_config_t *config)
 {
-    assert((channel == &s_tx_channel || channel == &s_rx_channel) &&
-           config != NULL);
+    const unsigned index = _channel_index(channel);
+    assert(s_state.i2s_allocated[index] && config != NULL);
     ++s_state.i2s_init_calls;
     if (s_state.fail_i2s_init_call == s_state.i2s_init_calls)
     {
@@ -148,7 +154,7 @@ esp_err_t i2s_channel_reconfig_std_clock(
     i2s_chan_handle_t channel, const i2s_std_clk_config_t *config)
 {
     const unsigned index = _channel_index(channel);
-    assert(config != NULL);
+    assert(s_state.i2s_allocated[index] && config != NULL);
     ++s_state.i2s_clock_reconfig_calls;
     if (s_state.fail_i2s_clock_reconfig_call ==
             s_state.i2s_clock_reconfig_calls)
@@ -165,7 +171,7 @@ esp_err_t i2s_channel_reconfig_std_slot(
     i2s_chan_handle_t channel, const i2s_std_slot_config_t *config)
 {
     const unsigned index = _channel_index(channel);
-    assert(config != NULL);
+    assert(s_state.i2s_allocated[index] && config != NULL);
     ++s_state.i2s_slot_reconfig_calls;
     if (s_state.fail_i2s_slot_reconfig_call ==
             s_state.i2s_slot_reconfig_calls)
@@ -178,22 +184,53 @@ esp_err_t i2s_channel_reconfig_std_slot(
     return ESP_OK;
 }
 
+esp_err_t i2s_channel_get_info(i2s_chan_handle_t channel,
+                               i2s_chan_info_t *info)
+{
+    const unsigned index = _channel_index(channel);
+    assert(s_state.i2s_allocated[index] && info != NULL);
+    ++s_state.i2s_get_info_calls;
+    *info = (i2s_chan_info_t)
+    {
+        .is_enabled = s_state.i2s_enabled[index],
+    };
+    return ESP_OK;
+}
+
+esp_err_t i2s_channel_disable(i2s_chan_handle_t channel)
+{
+    const unsigned index = _channel_index(channel);
+    assert(s_state.i2s_allocated[index] && s_state.i2s_enabled[index]);
+    ++s_state.i2s_disable_calls;
+    if (s_state.i2s_disable_failures_remaining > 0U)
+    {
+        --s_state.i2s_disable_failures_remaining;
+        return ESP_FAIL;
+    }
+    s_state.i2s_enabled[index] = false;
+    return ESP_OK;
+}
+
 esp_err_t i2s_del_channel(i2s_chan_handle_t channel)
 {
-    assert(channel == &s_tx_channel || channel == &s_rx_channel);
+    const unsigned index = _channel_index(channel);
+    assert(s_state.i2s_allocated[index] && !s_state.i2s_enabled[index]);
     ++s_state.i2s_delete_calls;
     if (s_state.i2s_delete_failures_remaining > 0U)
     {
         --s_state.i2s_delete_failures_remaining;
         return ESP_FAIL;
     }
+    s_state.i2s_allocated[index] = false;
     return ESP_OK;
 }
 
 esp_err_t i2s_channel_write(i2s_chan_handle_t channel, const void *data,
                             size_t bytes, size_t *written, TickType_t ticks)
 {
-    assert(channel == &s_tx_channel && data != NULL);
+    assert(channel == &s_tx_channel && data != NULL &&
+           s_state.i2s_allocated[BOARD_AUDIO_FAKE_TX_CHANNEL] &&
+           s_state.i2s_enabled[BOARD_AUDIO_FAKE_TX_CHANNEL]);
     (void)ticks;
     *written = bytes;
     return ESP_OK;
@@ -202,9 +239,12 @@ esp_err_t i2s_channel_write(i2s_chan_handle_t channel, const void *data,
 esp_err_t i2s_channel_read(i2s_chan_handle_t channel, void *data,
                            size_t bytes, size_t *read, TickType_t ticks)
 {
-    assert(channel == &s_rx_channel && data != NULL);
+    assert(channel == &s_rx_channel && data != NULL &&
+           s_state.i2s_allocated[BOARD_AUDIO_FAKE_RX_CHANNEL] &&
+           s_state.i2s_enabled[BOARD_AUDIO_FAKE_RX_CHANNEL]);
     (void)ticks;
-    memset(data, 0, bytes);
+    ++s_state.i2s_read_calls;
+    memset(data, (int)(0x20U + s_state.i2s_read_calls), bytes);
     *read = bytes;
     return ESP_OK;
 }
@@ -227,6 +267,9 @@ const audio_codec_data_if_t *audio_codec_new_i2s_data(
 {
     assert(config != NULL && config->tx_handle == &s_tx_channel &&
            config->rx_handle == &s_rx_channel);
+    assert(s_state.i2s_allocated[BOARD_AUDIO_FAKE_TX_CHANNEL]);
+    assert(s_state.i2s_allocated[BOARD_AUDIO_FAKE_RX_CHANNEL]);
+    ++s_state.data_create_calls;
     return (const audio_codec_data_if_t *)&s_data_interface;
 }
 
@@ -252,7 +295,10 @@ esp_codec_dev_handle_t esp_codec_dev_new(esp_codec_dev_cfg_t *config)
 void esp_codec_dev_delete(esp_codec_dev_handle_t device)
 {
     assert(device == &s_codec_device);
+    assert(!s_state.codec_opened);
     s_state.codec_opened = false;
+    s_state.i2s_enabled[BOARD_AUDIO_FAKE_TX_CHANNEL] = false;
+    s_state.i2s_enabled[BOARD_AUDIO_FAKE_RX_CHANNEL] = false;
     ++s_state.codec_delete_calls;
 }
 
@@ -266,6 +312,9 @@ int esp_codec_dev_open(esp_codec_dev_handle_t device,
         return ESP_CODEC_DEV_OK;
     }
     s_state.codec_opened = true;
+    s_state.i2s_enabled[BOARD_AUDIO_FAKE_TX_CHANNEL] = true;
+    s_state.i2s_enabled[BOARD_AUDIO_FAKE_RX_CHANNEL] =
+        !s_state.codec_open_leave_rx_disabled;
     s_state.opened_format = *format;
     if (s_state.codec_open_failures_remaining > 0U)
     {
@@ -285,6 +334,22 @@ int esp_codec_dev_close(esp_codec_dev_handle_t device)
         return ESP_FAIL;
     }
     s_state.codec_opened = false;
+    s_state.i2s_enabled[BOARD_AUDIO_FAKE_TX_CHANNEL] =
+        s_state.codec_close_leave_tx_enabled;
+    s_state.i2s_enabled[BOARD_AUDIO_FAKE_RX_CHANNEL] = false;
+    return ESP_CODEC_DEV_OK;
+}
+
+int esp_codec_dev_set_in_gain(esp_codec_dev_handle_t device, float gain_db)
+{
+    assert(device == &s_codec_device && s_state.codec_opened);
+    ++s_state.codec_set_in_gain_calls;
+    if (s_state.codec_set_in_gain_failures_remaining > 0U)
+    {
+        --s_state.codec_set_in_gain_failures_remaining;
+        return ESP_FAIL;
+    }
+    s_state.codec_input_gain_db = gain_db;
     return ESP_CODEC_DEV_OK;
 }
 
@@ -322,5 +387,9 @@ int audio_codec_delete_gpio_if(const audio_codec_gpio_if_t *interface)
 int audio_codec_delete_data_if(const audio_codec_data_if_t *interface)
 {
     assert(interface == (const audio_codec_data_if_t *)&s_data_interface);
+    assert(!s_state.codec_opened);
+    assert(!s_state.i2s_enabled[BOARD_AUDIO_FAKE_TX_CHANNEL]);
+    assert(!s_state.i2s_enabled[BOARD_AUDIO_FAKE_RX_CHANNEL]);
+    ++s_state.data_delete_calls;
     return ESP_CODEC_DEV_OK;
 }

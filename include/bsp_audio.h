@@ -17,8 +17,8 @@ bsp_audio_config_t bsp_audio_get_default_config(void);
 /**
  * @brief Initialize the board audio device around an existing I2C bus.
  *
- * The function creates the I2S full-duplex channels and the ES8311 control
- * path, but does not start DMA until bsp_audio_start() is called.
+ * The function retains the board I2C bus and default policy but defers I2S and
+ * ES8311 allocation until bsp_audio_start().
  *
  * @param i2c_bus is the board-owned I2C master bus.
  * @return ESP_OK on success, otherwise an ESP-IDF error.
@@ -32,7 +32,7 @@ esp_err_t bsp_audio_init(void *i2c_bus);
  */
 esp_err_t bsp_audio_deinit(void);
 
-/** @brief Report whether the codec and I2S resources are initialized. */
+/** @brief Report whether board audio is initialized and may be started. */
 bool bsp_audio_is_available(void);
 
 /** @brief Report whether both full-duplex channels are running. */
@@ -53,10 +53,18 @@ bool bsp_audio_is_started(void);
  */
 esp_err_t bsp_audio_configure(const bsp_audio_config_t *config);
 
-/** @brief Start both TX and RX DMA channels and the ES8311 codec. */
+/** @brief Allocate and start both I2S channels and the ES8311 codec. */
 esp_err_t bsp_audio_start(void);
 
-/** @brief Stop both TX and RX DMA channels and mute the amplifier. */
+/**
+ * @brief Stop audio and release the codec, data interface, and I2S channels.
+ *
+ * A failed close or channel deletion retains the corresponding ownership so a
+ * later stop, start, or deinit call can retry cleanup.
+ *
+ * @return ESP_OK when all stream resources are released, otherwise the first
+ *         cleanup error.
+ */
 esp_err_t bsp_audio_stop(void);
 
 /**

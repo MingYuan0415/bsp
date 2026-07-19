@@ -35,7 +35,7 @@
 #define LCD_SPI_PIXEL_CLOCK_HZ          (60 * 1000 * 1000)
 #define LCD_SPI_DATA_LINES              (4)
 #define LCD_SPI_TRANS_QUEUE_DEPTH       (8)
-#define LCD_SPI_MAX_TRANSFER_LINES      (60)
+#define LCD_SPI_MAX_TRANSFER_LINES      (20)
 
 #define LCD_CMD_WRCTRLD                 (0x53)
 #define LCD_WRCTRLD_BCTRL_BIT           (0x20)
@@ -201,9 +201,9 @@ static esp_err_t _board_lcd_bus_init(board_context_t *board)
         SH8601_PANEL_IO_QSPI_CONFIG(LCD_SPI_PIN_CS, NULL, NULL);
     io_config.pclk_hz = LCD_SPI_PIXEL_CLOCK_HZ;
     io_config.trans_queue_depth = LCD_SPI_TRANS_QUEUE_DEPTH;
-    /* Direct PSRAM DMA is reserved for TE's single full-frame path. In
-     * partial mode, the short internal bounce transaction avoids PSRAM/MSPI
-     * contention at the LCD clock rate. */
+    /* Direct PSRAM DMA is reserved for TE's single full-frame path. Bounded
+     * 20-line partial transfers reduce the internal bounce allocation from
+     * 44 KiB to 14,720 bytes. */
     io_config.flags.psram_dma_direct = LCD_TE_SYNC_ENABLED;
 
     if (result == ESP_OK)

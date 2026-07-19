@@ -224,5 +224,14 @@ menu "MicroTech Project Config"
             int "Default speaker volume"
             range 0 100
             default 60
+
+        config BSP_AUDIO_MIC_GAIN_DB
+            int "Microphone input gain (dB)"
+            range 0 42
+            default 30
+            help
+                Analog ES8311 microphone gain applied whenever the full-duplex
+                codec starts. The codec rounds this value down to a supported
+                6 dB step.
     endmenu
 endmenu

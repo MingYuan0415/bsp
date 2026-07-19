@@ -10,9 +10,15 @@
 
 typedef void *i2s_chan_handle_t;
 
+typedef struct i2s_chan_info
+{
+    bool is_enabled;
+} i2s_chan_info_t;
+
 typedef struct i2s_chan_config
 {
     int unused;
+    bool auto_clear_after_cb;
 } i2s_chan_config_t;
 
 typedef enum i2s_data_bit_width
@@ -87,6 +93,9 @@ esp_err_t i2s_channel_reconfig_std_clock(
     i2s_chan_handle_t channel, const i2s_std_clk_config_t *config);
 esp_err_t i2s_channel_reconfig_std_slot(
     i2s_chan_handle_t channel, const i2s_std_slot_config_t *config);
+esp_err_t i2s_channel_get_info(i2s_chan_handle_t channel,
+                               i2s_chan_info_t *info);
+esp_err_t i2s_channel_disable(i2s_chan_handle_t channel);
 esp_err_t i2s_del_channel(i2s_chan_handle_t channel);
 esp_err_t i2s_channel_write(i2s_chan_handle_t channel, const void *data,
                             size_t bytes, size_t *written, TickType_t ticks);

@@ -52,6 +52,9 @@
 #ifndef CONFIG_BSP_AUDIO_VOLUME_DEFAULT
     #define CONFIG_BSP_AUDIO_VOLUME_DEFAULT 60
 #endif
+#ifndef CONFIG_BSP_AUDIO_MIC_GAIN_DB
+    #define CONFIG_BSP_AUDIO_MIC_GAIN_DB 30
+#endif
 #ifndef CONFIG_BSP_AUDIO_PA_DEFAULT_ON
     #define CONFIG_BSP_AUDIO_PA_DEFAULT_ON 1
 #endif
@@ -192,12 +195,25 @@ static i2s_std_config_t _make_i2s_config(const bsp_audio_config_t *config)
     return standard_config;
 }
 
+static bool _audio_has_stream_resources_locked(void)
+{
+    return s_audio.tx_channel != NULL || s_audio.rx_channel != NULL ||
+           s_audio.data_if != NULL ||
+           s_audio.ctrl_if != NULL || s_audio.gpio_if != NULL ||
+           s_audio.codec_if != NULL || s_audio.codec_device != NULL;
+}
+
+static bool _audio_stream_resources_complete_locked(void)
+{
+    return s_audio.tx_channel != NULL && s_audio.rx_channel != NULL &&
+           s_audio.data_if != NULL && s_audio.ctrl_if != NULL &&
+           s_audio.gpio_if != NULL && s_audio.codec_if != NULL &&
+           s_audio.codec_device != NULL;
+}
+
 static bool _audio_has_hardware_resources_locked(void)
 {
-    return s_audio.i2c_bus != NULL || s_audio.tx_channel != NULL ||
-           s_audio.rx_channel != NULL || s_audio.data_if != NULL ||
-           s_audio.ctrl_if != NULL || s_audio.gpio_if != NULL ||
-           s_audio.codec_if != NULL || s_audio.codec_device != NULL ||
+    return s_audio.i2c_bus != NULL || _audio_has_stream_resources_locked() ||
            s_audio.codec_close_required || s_audio.pa_shutdown_pending;
 }
 
@@ -268,11 +284,6 @@ static esp_err_t _destroy_codec_locked(void)
     esp_err_t first_error = ESP_OK;
     if (s_audio.codec_device != NULL)
     {
-        esp_err_t result = _codec_error(esp_codec_dev_close(s_audio.codec_device));
-        if (first_error == ESP_OK && result != ESP_OK)
-        {
-            first_error = result;
-        }
         esp_codec_dev_delete(s_audio.codec_device);
         s_audio.codec_device = NULL;
         s_audio.codec_close_required = false;
@@ -286,15 +297,6 @@ static esp_err_t _destroy_codec_locked(void)
         }
         s_audio.codec_if = NULL;
     }
-    if (s_audio.ctrl_if != NULL)
-    {
-        esp_err_t result = _codec_error(audio_codec_delete_ctrl_if(s_audio.ctrl_if));
-        if (first_error == ESP_OK && result != ESP_OK)
-        {
-            first_error = result;
-        }
-        s_audio.ctrl_if = NULL;
-    }
     if (s_audio.gpio_if != NULL)
     {
         esp_err_t result = _codec_error(audio_codec_delete_gpio_if(s_audio.gpio_if));
@@ -304,17 +306,20 @@ static esp_err_t _destroy_codec_locked(void)
         }
         s_audio.gpio_if = NULL;
     }
+    if (s_audio.ctrl_if != NULL)
+    {
+        esp_err_t result = _codec_error(audio_codec_delete_ctrl_if(s_audio.ctrl_if));
+        if (first_error == ESP_OK && result != ESP_OK)
+        {
+            first_error = result;
+        }
+        s_audio.ctrl_if = NULL;
+    }
     return first_error;
 }
 
 static esp_err_t _stop_audio_locked(void)
 {
-    if (!s_audio.started && !s_audio.codec_close_required &&
-            !s_audio.pa_shutdown_pending)
-    {
-        return ESP_OK;
-    }
-
     esp_err_t result = ESP_OK;
     if (s_audio.started || s_audio.codec_close_required)
     {
@@ -342,6 +347,30 @@ static esp_err_t _stop_audio_locked(void)
         if (result == ESP_OK && pa_result != ESP_OK)
         {
             result = pa_result;
+        }
+    }
+
+    const i2s_chan_handle_t channels[] =
+    {
+        s_audio.tx_channel,
+        s_audio.rx_channel,
+    };
+    for (size_t index = 0U;
+            index < sizeof(channels) / sizeof(channels[0]); ++index)
+    {
+        if (channels[index] == NULL)
+        {
+            continue;
+        }
+        i2s_chan_info_t info = {0};
+        esp_err_t channel_result = i2s_channel_get_info(channels[index], &info);
+        if (channel_result == ESP_OK && info.is_enabled)
+        {
+            channel_result = i2s_channel_disable(channels[index]);
+        }
+        if (result == ESP_OK && channel_result != ESP_OK)
+        {
+            result = channel_result;
         }
     }
     return result;
@@ -407,8 +436,9 @@ static esp_err_t _create_codec_locked(void)
 
 static esp_err_t _init_i2s_locked(void)
 {
-    const i2s_chan_config_t channel_config =
+    i2s_chan_config_t channel_config =
         I2S_CHANNEL_DEFAULT_CONFIG(CONFIG_BSP_AUDIO_I2S_PORT, I2S_ROLE_MASTER);
+    channel_config.auto_clear_after_cb = true;
     esp_err_t result = i2s_new_channel(&channel_config,
                                        &s_audio.tx_channel,
                                        &s_audio.rx_channel);
@@ -428,63 +458,48 @@ static esp_err_t _init_i2s_locked(void)
     return result;
 }
 
-static esp_err_t _reconfigure_i2s_channel_locked(
-    i2s_chan_handle_t channel, const bsp_audio_config_t *current,
-    const i2s_std_config_t *target)
+static esp_err_t _create_stream_resources_locked(void)
 {
-    const bool slot_first = current->bits_per_sample == 24U &&
-                            (target->clk_cfg.mclk_multiple % 3U) != 0U;
-    esp_err_t result;
-    if (slot_first)
+    if (_audio_stream_resources_complete_locked())
     {
-        result = i2s_channel_reconfig_std_slot(channel, &target->slot_cfg);
-        if (result != ESP_OK)
-        {
-            return result;
-        }
-        return i2s_channel_reconfig_std_clock(channel, &target->clk_cfg);
+        return ESP_OK;
+    }
+    if (_audio_has_stream_resources_locked() || s_audio.i2c_bus == NULL)
+    {
+        return ESP_ERR_INVALID_STATE;
     }
 
-    result = i2s_channel_reconfig_std_clock(channel, &target->clk_cfg);
+    esp_err_t result = _init_i2s_locked();
     if (result != ESP_OK)
     {
         return result;
     }
-    return i2s_channel_reconfig_std_slot(channel, &target->slot_cfg);
+
+    audio_codec_i2s_cfg_t data_config =
+    {
+        .port = CONFIG_BSP_AUDIO_I2S_PORT,
+        .rx_handle = s_audio.rx_channel,
+        .tx_handle = s_audio.tx_channel,
+        .clk_src = 0,
+    };
+    s_audio.data_if = audio_codec_new_i2s_data(&data_config);
+    if (s_audio.data_if == NULL)
+    {
+        return ESP_ERR_NO_MEM;
+    }
+    return _create_codec_locked();
 }
 
-static esp_err_t _reconfigure_i2s_locked(
-    const bsp_audio_config_t *current, const bsp_audio_config_t *target)
+static esp_err_t _release_stream_resources_locked(void)
 {
-    const i2s_std_config_t standard_config = _make_i2s_config(target);
-    esp_err_t result = _reconfigure_i2s_channel_locked(
-                           s_audio.tx_channel, current, &standard_config);
+    esp_err_t result = _stop_audio_locked();
     if (result != ESP_OK)
     {
         return result;
     }
-    return _reconfigure_i2s_channel_locked(
-               s_audio.rx_channel, current, &standard_config);
-}
 
-static esp_err_t _cleanup_audio_locked(void)
-{
-    esp_err_t first_error = ESP_OK;
-    if (s_audio.started || s_audio.codec_close_required ||
-            s_audio.pa_shutdown_pending)
-    {
-        esp_err_t result = _stop_audio_locked();
-        if (first_error == ESP_OK && result != ESP_OK)
-        {
-            first_error = result;
-        }
-    }
-
-    esp_err_t result = _destroy_codec_locked();
-    if (first_error == ESP_OK && result != ESP_OK)
-    {
-        first_error = result;
-    }
+    esp_err_t first_error = _destroy_codec_locked();
+    result = ESP_OK;
     if (s_audio.data_if != NULL)
     {
         result = _codec_error(audio_codec_delete_data_if(s_audio.data_if));
@@ -493,18 +508,6 @@ static esp_err_t _cleanup_audio_locked(void)
             first_error = result;
         }
         s_audio.data_if = NULL;
-    }
-    if (s_audio.tx_channel != NULL)
-    {
-        result = i2s_del_channel(s_audio.tx_channel);
-        if (first_error == ESP_OK && result != ESP_OK)
-        {
-            first_error = result;
-        }
-        if (result == ESP_OK)
-        {
-            s_audio.tx_channel = NULL;
-        }
     }
     if (s_audio.rx_channel != NULL)
     {
@@ -518,7 +521,49 @@ static esp_err_t _cleanup_audio_locked(void)
             s_audio.rx_channel = NULL;
         }
     }
-    if (s_audio.tx_channel == NULL && s_audio.rx_channel == NULL)
+    if (s_audio.tx_channel != NULL)
+    {
+        result = i2s_del_channel(s_audio.tx_channel);
+        if (first_error == ESP_OK && result != ESP_OK)
+        {
+            first_error = result;
+        }
+        if (result == ESP_OK)
+        {
+            s_audio.tx_channel = NULL;
+        }
+    }
+    return first_error;
+}
+
+static esp_err_t _verify_stream_running_locked(void)
+{
+    const i2s_chan_handle_t channels[] =
+    {
+        s_audio.tx_channel,
+        s_audio.rx_channel,
+    };
+    for (size_t index = 0U;
+            index < sizeof(channels) / sizeof(channels[0]); ++index)
+    {
+        i2s_chan_info_t info = {0};
+        esp_err_t result = i2s_channel_get_info(channels[index], &info);
+        if (result != ESP_OK)
+        {
+            return result;
+        }
+        if (!info.is_enabled)
+        {
+            return ESP_ERR_INVALID_STATE;
+        }
+    }
+    return ESP_OK;
+}
+
+static esp_err_t _cleanup_audio_locked(void)
+{
+    esp_err_t first_error = _release_stream_resources_locked();
+    if (!_audio_has_stream_resources_locked())
     {
         s_audio.i2c_bus = NULL;
     }
@@ -546,7 +591,8 @@ static esp_err_t _apply_output_settings_locked(void)
     {
         return result;
     }
-    return _set_pa_level(s_audio.pa_enabled);
+    result = _set_pa_level(s_audio.pa_enabled);
+    return result == ESP_ERR_NOT_SUPPORTED ? ESP_OK : result;
 }
 
 bsp_audio_config_t bsp_audio_get_default_config(void)
@@ -630,30 +676,6 @@ esp_err_t board_audio_init(void *i2c_bus)
     {
         goto cleanup;
     }
-    result = _init_i2s_locked();
-    if (result != ESP_OK)
-    {
-        goto cleanup;
-    }
-
-    audio_codec_i2s_cfg_t data_config =
-    {
-        .port = CONFIG_BSP_AUDIO_I2S_PORT,
-        .rx_handle = s_audio.rx_channel,
-        .tx_handle = s_audio.tx_channel,
-        .clk_src = 0,
-    };
-    s_audio.data_if = audio_codec_new_i2s_data(&data_config);
-    if (s_audio.data_if == NULL)
-    {
-        result = ESP_ERR_NO_MEM;
-        goto cleanup;
-    }
-    result = _create_codec_locked();
-    if (result != ESP_OK)
-    {
-        goto cleanup;
-    }
     s_audio.initialized = true;
     result = ESP_OK;
     goto exit;
@@ -730,8 +752,7 @@ bool bsp_audio_is_available(void)
     {
         return false;
     }
-    const bool available = s_audio.initialized && s_audio.codec_device != NULL &&
-                           s_audio.data_if != NULL;
+    const bool available = s_audio.initialized && s_audio.i2c_bus != NULL;
     _unlock_audio();
     return available;
 }
@@ -769,66 +790,8 @@ esp_err_t bsp_audio_configure(const bsp_audio_config_t *config)
         result = ESP_ERR_INVALID_STATE;
         goto exit;
     }
-    if (memcmp(&s_audio.config, config, sizeof(*config)) == 0)
-    {
-        result = ESP_OK;
-        goto exit;
-    }
-
-    result = _lock_streams_locked();
-    if (result != ESP_OK)
-    {
-        goto exit;
-    }
-    const bsp_audio_config_t previous = s_audio.config;
-    esp_err_t format_error = _reconfigure_i2s_locked(&previous, config);
-    if (format_error != ESP_OK)
-    {
-        const esp_err_t recovery_result = _reconfigure_i2s_locked(
-                                              config, &previous);
-        result = format_error;
-        if (recovery_result != ESP_OK)
-        {
-            const esp_err_t cleanup_result = _cleanup_audio_locked();
-            if (cleanup_result != ESP_OK)
-            {
-                result = cleanup_result;
-            }
-        }
-        goto streams_exit;
-    }
-
-    format_error = _destroy_codec_locked();
-    if (format_error == ESP_OK)
-    {
-        s_audio.config = *config;
-        format_error = _create_codec_locked();
-    }
-    if (format_error == ESP_OK)
-    {
-        result = ESP_OK;
-        goto streams_exit;
-    }
-
-    (void)_destroy_codec_locked();
-    esp_err_t recovery_result = _reconfigure_i2s_locked(config, &previous);
-    s_audio.config = previous;
-    if (recovery_result == ESP_OK)
-    {
-        recovery_result = _create_codec_locked();
-    }
-    result = format_error;
-    if (recovery_result != ESP_OK)
-    {
-        const esp_err_t cleanup_result = _cleanup_audio_locked();
-        if (cleanup_result != ESP_OK)
-        {
-            result = cleanup_result;
-        }
-    }
-
-streams_exit:
-    _unlock_streams();
+    s_audio.config = *config;
+    result = ESP_OK;
 
 exit:
     _unlock_audio();
@@ -842,7 +805,7 @@ esp_err_t bsp_audio_start(void)
     {
         return result;
     }
-    if (!s_audio.initialized || s_audio.codec_device == NULL)
+    if (!s_audio.initialized)
     {
         result = ESP_ERR_INVALID_STATE;
         goto exit;
@@ -852,11 +815,26 @@ esp_err_t bsp_audio_start(void)
         result = ESP_OK;
         goto exit;
     }
-    if (s_audio.codec_close_required || s_audio.pa_shutdown_pending)
+    if (s_audio.codec_close_required || s_audio.pa_shutdown_pending ||
+            _audio_has_stream_resources_locked())
     {
-        result = _stop_audio_locked();
+        result = _release_stream_resources_locked();
         if (result != ESP_OK)
         {
+            goto exit;
+        }
+    }
+    if (!_audio_stream_resources_complete_locked())
+    {
+        result = _create_stream_resources_locked();
+        if (result != ESP_OK)
+        {
+            const esp_err_t cleanup_result =
+                _release_stream_resources_locked();
+            if (cleanup_result != ESP_OK)
+            {
+                result = cleanup_result;
+            }
             goto exit;
         }
     }
@@ -877,7 +855,31 @@ esp_err_t bsp_audio_start(void)
                           &sample_info));
     if (result != ESP_OK)
     {
-        const esp_err_t cleanup_result = _stop_audio_locked();
+        const esp_err_t cleanup_result = _release_stream_resources_locked();
+        if (cleanup_result != ESP_OK)
+        {
+            result = cleanup_result;
+        }
+        goto exit;
+    }
+
+    result = _verify_stream_running_locked();
+    if (result != ESP_OK)
+    {
+        const esp_err_t cleanup_result = _release_stream_resources_locked();
+        if (cleanup_result != ESP_OK)
+        {
+            result = cleanup_result;
+        }
+        goto exit;
+    }
+
+    result = _codec_error(esp_codec_dev_set_in_gain(
+                              s_audio.codec_device,
+                              (float)CONFIG_BSP_AUDIO_MIC_GAIN_DB));
+    if (result != ESP_OK)
+    {
+        const esp_err_t cleanup_result = _release_stream_resources_locked();
         if (cleanup_result != ESP_OK)
         {
             result = cleanup_result;
@@ -889,7 +891,7 @@ esp_err_t bsp_audio_start(void)
     result = _apply_output_settings_locked();
     if (result != ESP_OK)
     {
-        const esp_err_t cleanup_result = _stop_audio_locked();
+        const esp_err_t cleanup_result = _release_stream_resources_locked();
         if (cleanup_result != ESP_OK)
         {
             result = cleanup_result;
@@ -914,7 +916,8 @@ esp_err_t bsp_audio_stop(void)
         goto exit;
     }
     if (!s_audio.started && !s_audio.codec_close_required &&
-            !s_audio.pa_shutdown_pending)
+            !s_audio.pa_shutdown_pending &&
+            !_audio_has_stream_resources_locked())
     {
         result = ESP_OK;
         goto exit;
@@ -924,7 +927,7 @@ esp_err_t bsp_audio_stop(void)
     {
         goto exit;
     }
-    result = _stop_audio_locked();
+    result = _release_stream_resources_locked();
     _unlock_streams();
 
 exit:

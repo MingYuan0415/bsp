@@ -64,6 +64,7 @@ typedef struct display_mock_state
     unsigned int touch_ready_delay_calls;
     unsigned int ten_ms_delay_calls;
     bool psram_dma_direct;
+    int lcd_max_transfer_sz;
     uint32_t lcd_pclk_hz;
     int lcd_queue_depth;
     bool init_brightness_zero_seen;
@@ -150,6 +151,7 @@ esp_err_t spi_bus_initialize(spi_host_device_t host,
     assert(host == SPI2_HOST);
     assert(bus_config != NULL);
     assert(dma_channel == SPI_DMA_CH_AUTO);
+    s_mock.lcd_max_transfer_sz = bus_config->max_transfer_sz;
     return ESP_OK;
 }
 
@@ -553,6 +555,7 @@ static void _test_init_configures_dma_by_display_mode(void)
 
     assert(board_display_init(&board) == ESP_OK);
     assert(s_mock.psram_dma_direct == TEST_TE_SYNC_ENABLED);
+    assert(s_mock.lcd_max_transfer_sz == 368 * 20 * 2);
     assert(s_mock.lcd_pclk_hz == 60U * 1000U * 1000U);
     assert(s_mock.lcd_queue_depth == 8);
     assert(board.display.port.te.enabled == TEST_TE_SYNC_ENABLED);

@@ -27,7 +27,7 @@ typedef struct sh8601_vendor_config
 } sh8601_vendor_config_t;
 
 #define SH8601_PANEL_BUS_QSPI_CONFIG(pclk, data0, data1, data2, data3, size) \
-    ((spi_bus_config_t){0})
+    ((spi_bus_config_t){.max_transfer_sz = (size)})
 #define SH8601_PANEL_IO_QSPI_CONFIG(cs, callback, context) \
     ((esp_lcd_panel_io_spi_config_t){0})
 

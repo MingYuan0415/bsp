@@ -29,7 +29,7 @@ idf.py build
 
 当前唯一板型为默认项，且仅在 `IDF_TARGET_ESP32S3` 下可选。
 
-`MicroTech Project Config -> Board audio` 可配置 I2S 端口、MCLK/BCLK/LRCK/DOUT/DIN、NS4150B PA GPIO、PCM 格式、MCLK 倍频和默认音量。当前默认值为 I2S0，GPIO16/9/45/8/10，PA GPIO46，16 kHz、16-bit、双声道、384x MCLK、音量 60，开始流传输时默认开启 PA。
+`MicroTech Project Config -> Board audio` 可配置 I2S 端口、MCLK/BCLK/LRCK/DOUT/DIN、NS4150B PA GPIO、PCM 格式、MCLK 倍频、麦克风输入增益和默认音量。当前默认值为 I2S0，GPIO16/9/45/8/10，PA GPIO46，16 kHz、16-bit、双声道、384x MCLK、麦克风增益 30 dB、音量 60，开始流传输时默认开启 PA。
 
 ## 硬件适配
 
@@ -40,7 +40,7 @@ idf.py build
 | SD | SDSPI 使用 SPI3，MOSI/MISO/CLK 为 GPIO1/3/2，EXIO7 经 GPIO wrapper 作为低有效 CS，默认 20 MHz | `BSP_CAPABILITY_SD`、`bsp_hal_get_sd()`；mount/unmount 和挂载状态查询 |
 | AXP2101 | EXIO5 为低有效 IRQ；轮询时读取并清除 latched status | `BSP_CAPABILITY_POWER`、`bsp_hal_get_power()`；`get_info` 和 `poll_irq` |
 | PCF85063 | EXIO3 为低有效 RTC_INT；支持重复日历 alarm、pending 查询和清除 | `BSP_CAPABILITY_RTC`、`bsp_hal_get_rtc()`；`alarm_configure/disable/get_status/clear/poll_interrupt` |
-| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿；`BSP_DISPLAY_TE_SYNC` 默认关闭，显示使用 60 行双 partial buffer | 显式启用配置后，`bsp_display_port_t.te` 导出 GPIO 上升沿和 60 MHz、4 data lines、16 bpp 参数，App Manager 使用 `ESP_LV_ADAPTER_TEAR_AVOID_MODE_TE_SYNC` |
+| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿；`BSP_DISPLAY_TE_SYNC` 默认关闭，显示使用 20 行双 partial buffer，单次内部 DMA staging 上限为 14,720 B | 显式启用配置后，`bsp_display_port_t.te` 导出 GPIO 上升沿和 60 MHz、4 data lines、16 bpp 参数，App Manager 使用 `ESP_LV_ADAPTER_TEAR_AVOID_MODE_TE_SYNC` |
 
 AXP2101 默认 profile 与原理图一致：DCDC1/2/3/4 为 3.3/0.9/1.2/1.8 V，DCDC5 关闭；ALDO1/2/3/4 为 3.3/3.3/3.0/1.8 V；BLDO1/2 为 1.2/2.8 V；CPUSLDO 为 1.2 V；DLDO1/2 关闭。充电参数为预充 50 mA、恒流 200 mA、终止 25 mA、目标 4.1 V，并启用电池检测、Gauge、主电池充电以及电池/VBUS/电源键/充电状态 IRQ。
 

@@ -32,6 +32,7 @@ void esp_codec_dev_delete(esp_codec_dev_handle_t device);
 int esp_codec_dev_open(esp_codec_dev_handle_t device,
                        esp_codec_dev_sample_info_t *format);
 int esp_codec_dev_close(esp_codec_dev_handle_t device);
+int esp_codec_dev_set_in_gain(esp_codec_dev_handle_t device, float gain_db);
 int esp_codec_dev_set_out_vol(esp_codec_dev_handle_t device, int volume);
 int esp_codec_dev_set_out_mute(esp_codec_dev_handle_t device, bool muted);
 

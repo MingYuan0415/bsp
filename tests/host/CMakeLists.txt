@@ -244,3 +244,27 @@ target_compile_options(board_audio_lifecycle_test PRIVATE
 )
 
 add_test(NAME board_audio_lifecycle_test COMMAND board_audio_lifecycle_test)
+
+add_executable(board_audio_no_pa_test
+    board_audio_no_pa_test.c
+    audio_fakes/board_audio_fakes.c
+    ../../waveshare/esp32-s3-touch-amoled-1.8/board_audio.c
+    ../../waveshare/esp32-s3-touch-amoled-1.8/board_audio_format.c
+)
+
+target_include_directories(board_audio_no_pa_test PRIVATE
+    audio_fakes/include
+    ../../waveshare/esp32-s3-touch-amoled-1.8
+)
+
+target_compile_features(board_audio_no_pa_test PRIVATE c_std_11)
+target_compile_definitions(board_audio_no_pa_test PRIVATE
+    CONFIG_BSP_AUDIO_PA_GPIO=-1
+)
+target_compile_options(board_audio_no_pa_test PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+)
+
+add_test(NAME board_audio_no_pa_test COMMAND board_audio_no_pa_test)

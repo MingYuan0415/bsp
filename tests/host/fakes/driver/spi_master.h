@@ -7,7 +7,7 @@ typedef int spi_host_device_t;
 
 typedef struct spi_bus_config
 {
-    int unused;
+    int max_transfer_sz;
 } spi_bus_config_t;
 
 #define SPI2_HOST       2
