@@ -101,6 +101,41 @@ target_link_options(board_display_te_off_test PRIVATE
 
 add_test(NAME board_display_te_off_test COMMAND board_display_te_off_test)
 
+function(add_board_display_transfer_test target clock_hz max_lines direct)
+    add_executable(${target}
+        board_display_suspend_test.c
+        ../../waveshare/esp32-s3-touch-amoled-1.8/board_display.c
+    )
+    target_include_directories(${target} PRIVATE
+        fakes
+        ../../include
+        ../../waveshare/esp32-s3-touch-amoled-1.8
+    )
+    target_compile_features(${target} PRIVATE c_std_11)
+    target_compile_definitions(${target} PRIVATE
+        BSP_TEST_TE_SYNC_UNDEFINED=1
+        CONFIG_BSP_DISPLAY_SPI_CLOCK_HZ=${clock_hz}
+        CONFIG_BSP_DISPLAY_SPI_MAX_TRANSFER_LINES=${max_lines}
+        CONFIG_BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT=${direct}
+    )
+    target_compile_options(${target} PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -ffunction-sections
+        -fdata-sections
+    )
+    target_link_options(${target} PRIVATE
+        -Wl,--gc-sections
+    )
+    add_test(NAME ${target} COMMAND ${target})
+endfunction()
+
+add_board_display_transfer_test(board_display_direct_10_test 40000000 10 1)
+add_board_display_transfer_test(board_display_direct_44_test 40000000 44 1)
+add_board_display_transfer_test(board_display_request_60_test 40000000 60 0)
+add_board_display_transfer_test(board_display_clock_80m_test 80000000 10 0)
+
 add_executable(board_imu_test
     board_imu_test.c
     ../../waveshare/esp32-s3-touch-amoled-1.8/board_imu.c

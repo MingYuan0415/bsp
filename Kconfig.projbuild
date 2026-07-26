@@ -17,6 +17,50 @@ menu "MicroTech Project Config"
     menu "Board display"
         depends on BOARD_TYPE_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_8
 
+        choice BSP_DISPLAY_SPI_CLOCK
+            prompt "LCD SPI clock"
+            default BSP_DISPLAY_SPI_CLOCK_40M
+            help
+                Select the requested SH8601 SPI clock. 40 MHz is the validated
+                safe default. 80 MHz is available only for controlled A/B
+                testing after panel timing and signal integrity validation.
+
+            config BSP_DISPLAY_SPI_CLOCK_40M
+                bool "40 MHz (safe)"
+
+            config BSP_DISPLAY_SPI_CLOCK_80M
+                bool "80 MHz (experimental A/B)"
+        endchoice
+
+        config BSP_DISPLAY_SPI_CLOCK_HZ
+            int
+            default 40000000 if BSP_DISPLAY_SPI_CLOCK_40M
+            default 80000000 if BSP_DISPLAY_SPI_CLOCK_80M
+
+        config BSP_DISPLAY_SPI_MAX_TRANSFER_LINES
+            int "Logical LCD panel transfer height"
+            range 1 448
+            default 10
+            help
+                Set the logical RGB565 panel-transfer height. On ESP32-S3, one
+                32 KiB DMA transfer holds at most 44 complete 368-pixel rows
+                (32,384 bytes); 45 rows require 33,120 bytes. Requests above
+                44 rows remain valid and ESP-IDF splits them into DMA segments
+                within the hardware limit. This setting is independent of the
+                LVGL draw-buffer height.
+
+        config BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT
+            bool "Enable direct PSRAM DMA without TE (unsafe experiment)"
+            depends on SPIRAM
+            default n
+            help
+                Allow the non-TE partial-rendering path to submit PSRAM draw
+                buffers directly to SPI DMA. On the current board with
+                ESP-IDF 6.0.2, a 10-row full-load run produced a blue line at
+                the top of the panel and froze the GUI. Keep this disabled in
+                production; the option remains only for issue reproduction or
+                future driver and hardware validation.
+
         config BSP_DISPLAY_TE_SYNC
             bool "Enable LCD tearing-effect synchronization"
             default n

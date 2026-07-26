@@ -32,10 +32,11 @@
 #define LCD_SPI_PIN_DATA2               (GPIO_NUM_6)
 #define LCD_SPI_PIN_DATA3               (GPIO_NUM_7)
 #define LCD_TE_PIN                       (GPIO_NUM_13)
-#define LCD_SPI_PIXEL_CLOCK_HZ          (60 * 1000 * 1000)
+#define LCD_SPI_CLOCK_HZ                (CONFIG_BSP_DISPLAY_SPI_CLOCK_HZ)
 #define LCD_SPI_DATA_LINES              (4)
-#define LCD_SPI_TRANS_QUEUE_DEPTH       (8)
-#define LCD_SPI_MAX_TRANSFER_LINES      (20)
+#define LCD_SPI_TRANS_QUEUE_DEPTH       (2)
+#define LCD_SPI_MAX_TRANSFER_LINES \
+    (CONFIG_BSP_DISPLAY_SPI_MAX_TRANSFER_LINES)
 
 #define LCD_CMD_WRCTRLD                 (0x53)
 #define LCD_WRCTRLD_BCTRL_BIT           (0x20)
@@ -61,6 +62,16 @@
 #else
     #define LCD_TE_SYNC_ENABLED             (false)
 #endif
+
+#if defined(CONFIG_BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT) && \
+    CONFIG_BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT
+    #define LCD_NON_TE_PSRAM_DMA_DIRECT_ENABLED (true)
+#else
+    #define LCD_NON_TE_PSRAM_DMA_DIRECT_ENABLED (false)
+#endif
+
+#define LCD_PSRAM_DMA_DIRECT_ENABLED \
+    (LCD_TE_SYNC_ENABLED || LCD_NON_TE_PSRAM_DMA_DIRECT_ENABLED)
 
 #if CONFIG_LV_COLOR_DEPTH == 32
     #define LCD_BIT_PER_PIXEL               (24)
@@ -199,12 +210,11 @@ static esp_err_t _board_lcd_bus_init(board_context_t *board)
 
     esp_lcd_panel_io_spi_config_t io_config =
         SH8601_PANEL_IO_QSPI_CONFIG(LCD_SPI_PIN_CS, NULL, NULL);
-    io_config.pclk_hz = LCD_SPI_PIXEL_CLOCK_HZ;
+    io_config.pclk_hz = LCD_SPI_CLOCK_HZ;
     io_config.trans_queue_depth = LCD_SPI_TRANS_QUEUE_DEPTH;
-    /* Direct PSRAM DMA is reserved for TE's single full-frame path. Bounded
-     * 20-line partial transfers reduce the internal bounce allocation from
-     * 44 KiB to 14,720 bytes. */
-    io_config.flags.psram_dma_direct = LCD_TE_SYNC_ENABLED;
+    /* LVGL draw strips and SPI DMA chunks are independently configurable.
+     * Queue depth two bounds bounce memory to two transport chunks. */
+    io_config.flags.psram_dma_direct = LCD_PSRAM_DMA_DIRECT_ENABLED;
 
     if (result == ESP_OK)
     {
@@ -215,6 +225,15 @@ static esp_err_t _board_lcd_bus_init(board_context_t *board)
         result = esp_lcd_new_panel_io_spi(
                      LCD_SPI_HOST, &io_config,
                      &board->display.port.panel_io);
+    }
+    if (result == ESP_OK)
+    {
+        LOG_I("LCD SPI clock_hz=%u max_lines=%u queue=%u direct=%u te=%u",
+              (unsigned)LCD_SPI_CLOCK_HZ,
+              (unsigned)LCD_SPI_MAX_TRANSFER_LINES,
+              (unsigned)LCD_SPI_TRANS_QUEUE_DEPTH,
+              (unsigned)LCD_PSRAM_DMA_DIRECT_ENABLED,
+              (unsigned)LCD_TE_SYNC_ENABLED);
     }
     return result;
 }
@@ -354,7 +373,7 @@ esp_err_t board_display_init(board_context_t *board)
     {
         .enabled = LCD_TE_SYNC_ENABLED,
         .gpio_num = LCD_TE_PIN,
-        .bus_freq_hz = LCD_SPI_PIXEL_CLOCK_HZ,
+        .bus_freq_hz = LCD_SPI_CLOCK_HZ,
         .data_lines = LCD_SPI_DATA_LINES,
         .bits_per_pixel = LCD_BIT_PER_PIXEL,
         .intr_type = GPIO_INTR_POSEDGE,
