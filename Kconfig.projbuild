@@ -21,15 +21,19 @@ menu "MicroTech Project Config"
             prompt "LCD SPI clock"
             default BSP_DISPLAY_SPI_CLOCK_40M
             help
-                Select the requested SH8601 SPI clock. 40 MHz is the validated
-                safe default. 80 MHz is available only for controlled A/B
-                testing after panel timing and signal integrity validation.
+                Select the requested SH8601 Quad SPI clock. Preliminary
+                datasheet Table 14 specifies a minimum 50 ns write cycle,
+                corresponding to a nominal 20 MHz limit. 40 MHz is the
+                project empirical default, not a datasheet guarantee. 80 MHz
+                is four times the nominal limit, may run on an individual
+                sample, and is available only for explicit experiments; it
+                can corrupt the display or freeze the GUI.
 
             config BSP_DISPLAY_SPI_CLOCK_40M
-                bool "40 MHz (safe)"
+                bool "40 MHz (project empirical default)"
 
             config BSP_DISPLAY_SPI_CLOCK_80M
-                bool "80 MHz (experimental A/B)"
+                bool "80 MHz (out-of-spec experimental)"
         endchoice
 
         config BSP_DISPLAY_SPI_CLOCK_HZ

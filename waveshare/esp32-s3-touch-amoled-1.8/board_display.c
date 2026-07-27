@@ -216,6 +216,10 @@ static esp_err_t _board_lcd_bus_init(board_context_t *board)
      * Queue depth two bounds bounce memory to two transport chunks. */
     io_config.flags.psram_dma_direct = LCD_PSRAM_DMA_DIRECT_ENABLED;
 
+#if LCD_SPI_CLOCK_HZ == 80000000
+    LOG_W("LCD SPI 80 MHz exceeds SH8601A QSPI timing; experimental only");
+#endif
+
     if (result == ESP_OK)
     {
         result = board_init_stage_gate(BOARD_INIT_STAGE_LCD_IO);

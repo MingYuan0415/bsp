@@ -31,7 +31,7 @@ idf.py build
 
 `MicroTech Project Config -> Board audio` 可配置 I2S 端口、MCLK/BCLK/LRCK/DOUT/DIN、NS4150B PA GPIO、PCM 格式、MCLK 倍频、麦克风输入增益和默认音量。当前默认值为 I2S0，GPIO16/9/45/8/10，PA GPIO46，16 kHz、16-bit、双声道、384x MCLK、麦克风增益 30 dB、音量 60，开始流传输时默认开启 PA。
 
-`MicroTech Project Config -> Board display` 将 LCD SPI 安全默认固定为 40 MHz；80 MHz 仅用于显式、受控的 A/B 测试，当前未经上板验证。ESP32-S3 的默认 80 MHz APB SPI 时钟不能精确分频出 60 MHz，因此不提供 60 MHz 档位。`BSP_DISPLAY_SPI_MAX_TRANSFER_LINES` 默认 10 行，`BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT` 默认关闭，`BSP_DISPLAY_TE_SYNC` 也保持默认关闭。当前板卡在 ESP-IDF 6.0.2 下启用非 TE direct/10 后已观察到顶部蓝线与 GUI 冻结，Direct 开关只保留为问题复现入口，禁止生产启用。Host 中的 Direct 与 80 MHz 测试只验证配置透传，不代表硬件可用。
+`MicroTech Project Config -> Board display` 将 LCD SPI 项目经验默认固定为 40 MHz，而非数据手册保证的安全频率：SH8601A preliminary Table 14 的 Quad SPI 最小写周期为 50 ns，名义上对应 20 MHz。80 MHz 使用 ESP32-S3 APB /1 的实际输出，属于四倍名义上限的显式、单板实验选项；当前样机可以运行，但可能出现撕裂、花屏或冻结，禁止作为生产配置。ESP32-S3 的默认 80 MHz APB SPI 时钟不能精确分频出 60 MHz，因此不提供 60 MHz 档位。`BSP_DISPLAY_SPI_MAX_TRANSFER_LINES` 默认 10 行，`BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT` 默认关闭，`BSP_DISPLAY_TE_SYNC` 也保持默认关闭。当前板卡在 ESP-IDF 6.0.2 下启用非 TE direct/10 后已观察到顶部蓝线与 GUI 冻结，Direct 开关只保留为问题复现入口，禁止生产启用。Host 中的 Direct 与 80 MHz 测试只验证配置透传，不代表硬件可用。
 
 ## 硬件适配
 
@@ -42,7 +42,7 @@ idf.py build
 | SD | SDSPI 使用 SPI3，MOSI/MISO/CLK 为 GPIO1/3/2，EXIO7 经 GPIO wrapper 作为低有效 CS，默认 20 MHz | `BSP_CAPABILITY_SD`、`bsp_hal_get_sd()`；mount/unmount 和挂载状态查询 |
 | AXP2101 | EXIO5 为低有效 IRQ；轮询时读取并清除 latched status | `BSP_CAPABILITY_POWER`、`bsp_hal_get_power()`；`get_info` 和 `poll_irq` |
 | PCF85063 | EXIO3 为低有效 RTC_INT；支持重复日历 alarm、pending 查询和清除 | `BSP_CAPABILITY_RTC`、`bsp_hal_get_rtc()`；`alarm_configure/disable/get_status/clear/poll_interrupt` |
-| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿；`BSP_DISPLAY_TE_SYNC` 默认关闭。App Manager 使用两块 60 行 PSRAM 绘制条带（共 88,320 B），BSP 默认将单次 SPI DMA 分块限制为 10 行，并以深度 2 队列将内部 DMA bounce 峰值限制为 14,720 B；非 TE 默认不启用 PSRAM 直 DMA | 显式启用配置后，`bsp_display_port_t.te` 导出 GPIO 上升沿、所选 SPI 频率（默认 40 MHz）、4 data lines 和 16 bpp 参数，App Manager 使用 `ESP_LV_ADAPTER_TEAR_AVOID_MODE_TE_SYNC` |
+| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿；`BSP_DISPLAY_TE_SYNC` 默认关闭。App Manager 使用两块 60 行 PSRAM 绘制条带（共 88,320 B），BSP 默认将单次 SPI DMA 分块限制为 10 行，并以深度 2 队列将内部 DMA bounce 峰值限制为 14,720 B；非 TE 默认不启用 PSRAM 直 DMA | 显式启用配置后，`bsp_display_port_t.te` 导出 GPIO 上升沿、所选 SPI 频率（项目经验默认 40 MHz）、4 data lines 和 16 bpp 参数，App Manager 使用 `ESP_LV_ADAPTER_TEAR_AVOID_MODE_TE_SYNC` |
 
 AXP2101 默认 profile 与原理图一致：DCDC1/2/3/4 为 3.3/0.9/1.2/1.8 V，DCDC5 关闭；ALDO1/2/3/4 为 3.3/3.3/3.0/1.8 V；BLDO1/2 为 1.2/2.8 V；CPUSLDO 为 1.2 V；DLDO1/2 关闭。充电参数为预充 50 mA、恒流 200 mA、终止 25 mA、目标 4.1 V，并启用电池检测、Gauge、主电池充电以及电池/VBUS/电源键/充电状态 IRQ。
 
