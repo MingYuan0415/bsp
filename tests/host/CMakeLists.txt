@@ -157,6 +157,25 @@ target_link_libraries(board_imu_test PRIVATE m)
 
 add_test(NAME board_imu_test COMMAND board_imu_test)
 
+add_executable(board_tca9554_test
+    board_tca9554_test.c
+    ../../waveshare/esp32-s3-touch-amoled-1.8/board_tca9554.c
+)
+
+target_include_directories(board_tca9554_test PRIVATE
+    tca9554_fakes
+    ../../waveshare/esp32-s3-touch-amoled-1.8
+)
+
+target_compile_features(board_tca9554_test PRIVATE c_std_11)
+target_compile_options(board_tca9554_test PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+)
+
+add_test(NAME board_tca9554_test COMMAND board_tca9554_test)
+
 add_executable(board_imu_bridge_test
     board_imu_bridge_test.c
     ../../waveshare/esp32-s3-touch-amoled-1.8/board_imu_bridge.c

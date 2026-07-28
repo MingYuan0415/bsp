@@ -4,12 +4,20 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 
 #include "board_tca9554.h"
+
+#define DBG_TAG "board_tca9554"
+#define DBG_LVL DBG_INFO
+#include "mt_log.h"
 
 #define BOARD_TCA9554_IO_COUNT          (8U)
 #define BOARD_TCA9554_I2C_SPEED_HZ      (400000U)
 #define BOARD_TCA9554_I2C_TIMEOUT_MS    (20)
+#define BOARD_TCA9554_INIT_SETTLE_MS    (10U)
+#define BOARD_TCA9554_INIT_ATTEMPTS     (10U)
+#define BOARD_TCA9554_INIT_RETRY_MS     (10U)
 
 #define BOARD_TCA9554_REG_INPUT         (0x00U)
 #define BOARD_TCA9554_REG_OUTPUT        (0x01U)
@@ -243,14 +251,58 @@ static esp_err_t _board_tca9554_read_direction_reg(esp_io_expander_handle_t hand
     return ESP_OK;
 }
 
-static esp_err_t _board_tca9554_reset(esp_io_expander_handle_t handle)
+static esp_err_t _board_tca9554_reset_once(
+    esp_io_expander_handle_t handle, uint8_t *failed_register)
 {
+    if (failed_register != NULL)
+    {
+        *failed_register = BOARD_TCA9554_REG_DIRECTION;
+    }
     esp_err_t result = _board_tca9554_write_direction_reg(
                            handle, BOARD_TCA9554_REGISTER_DEFAULT);
     if (result == ESP_OK)
     {
+        if (failed_register != NULL)
+        {
+            *failed_register = BOARD_TCA9554_REG_OUTPUT;
+        }
         result = _board_tca9554_write_output_reg(
                      handle, BOARD_TCA9554_REGISTER_DEFAULT);
+    }
+    return result;
+}
+
+static esp_err_t _board_tca9554_reset(esp_io_expander_handle_t handle)
+{
+    return _board_tca9554_reset_once(handle, NULL);
+}
+
+static bool _board_tca9554_is_transient_init_error(esp_err_t error)
+{
+    return error == ESP_ERR_INVALID_RESPONSE || error == ESP_ERR_TIMEOUT;
+}
+
+static esp_err_t _board_tca9554_initialize(
+    esp_io_expander_handle_t handle, uint8_t *failed_register,
+    uint8_t *attempt_count)
+{
+    esp_err_t result = ESP_FAIL;
+    vTaskDelay(pdMS_TO_TICKS(BOARD_TCA9554_INIT_SETTLE_MS));
+
+    for (uint8_t attempt = 0U;
+            attempt < BOARD_TCA9554_INIT_ATTEMPTS; ++attempt)
+    {
+        *attempt_count = attempt + 1U;
+        result = _board_tca9554_reset_once(handle, failed_register);
+        if (result == ESP_OK ||
+                !_board_tca9554_is_transient_init_error(result))
+        {
+            break;
+        }
+        if (attempt + 1U < BOARD_TCA9554_INIT_ATTEMPTS)
+        {
+            vTaskDelay(pdMS_TO_TICKS(BOARD_TCA9554_INIT_RETRY_MS));
+        }
     }
     return result;
 }
@@ -309,9 +361,15 @@ esp_err_t board_tca9554_create(i2c_master_bus_handle_t i2c_bus,
     device->output = BOARD_TCA9554_REGISTER_DEFAULT;
     device->direction = BOARD_TCA9554_REGISTER_DEFAULT;
 
-    result = _board_tca9554_reset(&device->base);
+    uint8_t failed_register = BOARD_TCA9554_REG_DIRECTION;
+    uint8_t attempt_count = 0U;
+    result = _board_tca9554_initialize(
+                 &device->base, &failed_register, &attempt_count);
     if (result != ESP_OK)
     {
+        LOG_E("init failed: addr=0x%02x reg=0x%02x error=%s attempts=%u",
+              (unsigned int)device_address, (unsigned int)failed_register,
+              esp_err_to_name(result), (unsigned int)attempt_count);
         esp_err_t cleanup_ret =
             i2c_master_bus_rm_device(device->i2c_device);
         if (cleanup_ret != ESP_OK)
@@ -321,6 +379,11 @@ esp_err_t board_tca9554_create(i2c_master_bus_handle_t i2c_bus,
         }
         device->i2c_device = NULL;
         goto cleanup;
+    }
+    if (attempt_count > 1U)
+    {
+        LOG_W("init recovered: addr=0x%02x attempts=%u",
+              (unsigned int)device_address, (unsigned int)attempt_count);
     }
 
     *out_device = device;
