@@ -29,9 +29,12 @@ idf.py build
 
 当前唯一板型为默认项，且仅在 `IDF_TARGET_ESP32S3` 下可选。
 
-`MicroTech Project Config -> Board audio` 可配置 I2S 端口、MCLK/BCLK/LRCK/DOUT/DIN、NS4150B PA GPIO、PCM 格式、MCLK 倍频、麦克风输入增益和默认音量。当前默认值为 I2S0，GPIO16/9/45/8/10，PA GPIO46，16 kHz、16-bit、双声道、384x MCLK、麦克风增益 30 dB、音量 60，开始流传输时默认开启 PA。
+音频接线和校准属于板级事实：固定使用 I2S0、GPIO16/9/45/8/10、PA GPIO46 和
+30 dB 麦克风增益。PCM 格式、音量、mute 和目标 PA 状态由上层运行时产品配置传入。
+`board_audio_init()` 完成后 PA 保持关闭；未先调用 `bsp_audio_configure()` 时
+`bsp_audio_start()` 返回 `ESP_ERR_INVALID_STATE`。
 
-`MicroTech Project Config -> Board display` 将 LCD SPI 项目经验默认固定为 40 MHz，而非数据手册保证的安全频率：SH8601A preliminary Table 14 的 Quad SPI 最小写周期为 50 ns，名义上对应 20 MHz。80 MHz 使用 ESP32-S3 APB /1 的实际输出，属于四倍名义上限的显式、单板实验选项；当前样机可以运行，但可能出现撕裂、花屏或冻结，禁止作为生产配置。ESP32-S3 的默认 80 MHz APB SPI 时钟不能精确分频出 60 MHz，因此不提供 60 MHz 档位。`BSP_DISPLAY_SPI_MAX_TRANSFER_LINES` 默认 10 行，`BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT` 默认关闭，`BSP_DISPLAY_TE_SYNC` 也保持默认关闭。当前板卡在 ESP-IDF 6.0.2 下启用非 TE direct/10 后已观察到顶部蓝线与 GUI 冻结，Direct 开关只保留为问题复现入口，禁止生产启用。Host 中的 Direct 与 80 MHz 测试只验证配置透传，不代表硬件可用。
+`MicroTech Project Config -> Board display` 将 LCD SPI 项目经验默认固定为 40 MHz，而非数据手册保证的安全频率：SH8601A preliminary Table 14 的 Quad SPI 最小写周期为 50 ns，名义上对应 20 MHz。80 MHz 使用 ESP32-S3 APB /1 的实际输出，属于四倍名义上限的显式、单板实验选项；当前样机可以运行，但可能出现撕裂、花屏或冻结，禁止作为生产配置。ESP32-S3 的默认 80 MHz APB SPI 时钟不能精确分频出 60 MHz，因此不提供 60 MHz 档位。`BSP_DISPLAY_SPI_MAX_TRANSFER_LINES` 默认 10 行，`BSP_DISPLAY_SPI_TRANS_QUEUE_DEPTH` 默认 2，`BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT` 默认关闭，`BSP_DISPLAY_TE_SYNC` 也保持默认关闭。当前板卡在 ESP-IDF 6.0.2 下启用非 TE direct/10 后已观察到顶部蓝线与 GUI 冻结，Direct 开关只保留为问题复现入口，禁止生产启用。Host 中的 Direct 与 80 MHz 测试只验证配置透传，不代表硬件可用。
 
 ## 硬件适配
 
@@ -46,7 +49,11 @@ idf.py build
 
 AXP2101 默认 profile 与原理图一致：DCDC1/2/3/4 为 3.3/0.9/1.2/1.8 V，DCDC5 关闭；ALDO1/2/3/4 为 3.3/3.3/3.0/1.8 V；BLDO1/2 为 1.2/2.8 V；CPUSLDO 为 1.2 V；DLDO1/2 关闭。充电参数为预充 50 mA、恒流 200 mA、终止 25 mA、目标 4.1 V，并启用电池检测、Gauge、主电池充电以及电池/VBUS/电源键/充电状态 IRQ。
 
-SD 默认挂载点是 `/sdcard`，最多打开 5 个文件，FAT allocation unit 为 16 KiB。`format_if_mount_failed` 默认是 `false`，挂载失败不会自动格式化；只有显式启用该配置才允许破坏性恢复。挂载或卸载的 SPI bus/GPIO wrapper 清理失败时保留 partial handle，后续 `board_sdspi_unmount()` 可重试回滚。
+SD 的 `/sdcard`、最多 5 个文件和 16 KiB allocation unit 由根运行时产品配置传入。
+普通 init/start 永不请求格式化；只有上层显式调用
+`sd_storage_service_recover_and_mount()` 时 BSP mount adapter 才收到格式化恢复模式。
+挂载或卸载的 SPI bus/GPIO wrapper 清理失败时保留 partial handle，后续
+`board_sdspi_unmount()` 可重试回滚。
 
 ## HAL 使用约束
 

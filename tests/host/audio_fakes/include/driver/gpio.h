@@ -7,6 +7,13 @@
 
 typedef int gpio_num_t;
 
+#define GPIO_NUM_8  8
+#define GPIO_NUM_9  9
+#define GPIO_NUM_10 10
+#define GPIO_NUM_16 16
+#define GPIO_NUM_45 45
+#define GPIO_NUM_46 46
+
 typedef struct gpio_config
 {
     uint64_t pin_bit_mask;

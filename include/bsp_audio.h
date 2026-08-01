@@ -11,14 +11,11 @@
 extern "C" {
 #endif
 
-/** @brief Return the board's default audio format. */
-bsp_audio_config_t bsp_audio_get_default_config(void);
-
 /**
  * @brief Initialize the board audio device around an existing I2C bus.
  *
- * The function retains the board I2C bus and default policy but defers I2S and
- * ES8311 allocation until bsp_audio_start().
+ * The function retains the board I2C bus but defers stream configuration,
+ * I2S, and ES8311 allocation until the consumer configures and starts audio.
  *
  * @param i2c_bus is the board-owned I2C master bus.
  * @return ESP_OK on success, otherwise an ESP-IDF error.

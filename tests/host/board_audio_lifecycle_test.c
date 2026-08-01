@@ -8,6 +8,18 @@
 
 static int s_i2c_bus;
 
+static void _configure_baseline_format(void)
+{
+    const bsp_audio_config_t config =
+    {
+        .sample_rate_hz = 16000U,
+        .bits_per_sample = 16U,
+        .channels = 2U,
+        .mclk_multiple = 384U,
+    };
+    assert(bsp_audio_configure(&config) == ESP_OK);
+}
+
 static void _assert_i2s_format(const board_audio_fake_state_t *fake,
                                uint32_t sample_rate_hz,
                                uint8_t bits_per_sample, uint8_t channels,
@@ -60,6 +72,7 @@ static void _test_i2s_init_rollback(void)
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
     assert(fake->i2s_create_calls == 0U);
+    _configure_baseline_format();
     fake->fail_i2s_init_call = 2U;
 
     assert(bsp_audio_start() == ESP_FAIL);
@@ -86,6 +99,7 @@ static void _test_format_and_lifecycle(void)
     assert(bsp_audio_is_available());
     assert(fake->i2s_create_calls == 0U);
     assert(fake->codec_create_calls == 0U);
+    assert(bsp_audio_start() == ESP_ERR_INVALID_STATE);
 
     const bsp_audio_config_t mismatched_24_bit =
     {
@@ -134,6 +148,8 @@ static void _test_configure_between_cycles(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    assert(bsp_audio_start() == ESP_ERR_INVALID_STATE);
+    _configure_baseline_format();
     assert(bsp_audio_start() == ESP_OK);
     assert(bsp_audio_stop() == ESP_OK);
     _assert_stream_resources_released(fake);
@@ -188,8 +204,10 @@ static void _test_stop_pa_retry(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    _configure_baseline_format();
+    assert(bsp_audio_set_pa(true) == ESP_OK);
     assert(bsp_audio_start() == ESP_OK);
-    assert(fake->gpio_low_calls == 1U);
+    assert(fake->gpio_low_calls == 2U);
     assert(fake->gpio_high_calls == 1U);
 
     fake->gpio_low_failures_remaining = 1U;
@@ -197,12 +215,12 @@ static void _test_stop_pa_retry(void)
     assert(!bsp_audio_is_started());
     assert(fake->codec_close_calls == 1U);
     assert(fake->codec_delete_calls == 0U);
-    assert(fake->gpio_low_calls == 2U);
+    assert(fake->gpio_low_calls == 3U);
 
     assert(bsp_audio_stop() == ESP_OK);
     assert(fake->codec_close_calls == 1U);
     assert(fake->codec_delete_calls == 1U);
-    assert(fake->gpio_low_calls == 3U);
+    assert(fake->gpio_low_calls == 4U);
     _assert_stream_resources_released(fake);
     assert(board_audio_deinit() == ESP_OK);
 }
@@ -212,6 +230,7 @@ static void _test_input_gain_failure_rolls_back(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    _configure_baseline_format();
 
     fake->codec_set_in_gain_failures_remaining = 1U;
     assert(bsp_audio_start() == ESP_FAIL);
@@ -236,6 +255,7 @@ static void _test_partial_codec_open_cleanup_retry(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    _configure_baseline_format();
 
     fake->codec_open_failures_remaining = 1U;
     fake->codec_close_failures_remaining = 1U;
@@ -268,6 +288,8 @@ static void _test_deinit_pa_retry(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    _configure_baseline_format();
+    assert(bsp_audio_set_pa(true) == ESP_OK);
     assert(bsp_audio_start() == ESP_OK);
 
     fake->gpio_low_failures_remaining = 1U;
@@ -275,12 +297,12 @@ static void _test_deinit_pa_retry(void)
     assert(!bsp_audio_is_available());
     assert(fake->mutex_delete_calls == 0U);
     assert(fake->codec_delete_calls == 0U);
-    assert(fake->gpio_low_calls == 2U);
+    assert(fake->gpio_low_calls == 3U);
     const unsigned codec_close_calls = fake->codec_close_calls;
 
     assert(board_audio_deinit() == ESP_OK);
     assert(fake->codec_close_calls == codec_close_calls);
-    assert(fake->gpio_low_calls == 3U);
+    assert(fake->gpio_low_calls == 4U);
     assert(fake->mutex_delete_calls == 3U);
 }
 
@@ -289,6 +311,7 @@ static void _test_i2s_deinit_retry(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    _configure_baseline_format();
     assert(bsp_audio_start() == ESP_OK);
 
     fake->i2s_delete_failures_remaining = 1U;
@@ -306,6 +329,7 @@ static void _test_two_start_read_stop_cycles(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    _configure_baseline_format();
 
     uint8_t previous_sample = 0U;
     for (unsigned cycle = 1U; cycle <= 2U; ++cycle)
@@ -343,6 +367,7 @@ static void _test_open_success_requires_rx_enabled(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    _configure_baseline_format();
 
     fake->codec_open_leave_rx_disabled = true;
     assert(bsp_audio_start() == ESP_ERR_INVALID_STATE);
@@ -366,6 +391,7 @@ static void _test_close_success_requires_tx_disabled(void)
     board_audio_fakes_reset();
     board_audio_fake_state_t *fake = board_audio_fakes_state();
     assert(board_audio_init(&s_i2c_bus) == ESP_OK);
+    _configure_baseline_format();
     assert(bsp_audio_start() == ESP_OK);
 
     fake->codec_close_leave_tx_enabled = true;

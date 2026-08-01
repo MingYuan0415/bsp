@@ -16,49 +16,14 @@
 #define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
-#ifndef CONFIG_BSP_AUDIO_I2S_PORT
-    #define CONFIG_BSP_AUDIO_I2S_PORT 0
-#endif
-#ifndef CONFIG_BSP_AUDIO_I2S_MCLK_GPIO
-    #define CONFIG_BSP_AUDIO_I2S_MCLK_GPIO 16
-#endif
-#ifndef CONFIG_BSP_AUDIO_I2S_BCLK_GPIO
-    #define CONFIG_BSP_AUDIO_I2S_BCLK_GPIO 9
-#endif
-#ifndef CONFIG_BSP_AUDIO_I2S_LRCK_GPIO
-    #define CONFIG_BSP_AUDIO_I2S_LRCK_GPIO 45
-#endif
-#ifndef CONFIG_BSP_AUDIO_I2S_DOUT_GPIO
-    #define CONFIG_BSP_AUDIO_I2S_DOUT_GPIO 8
-#endif
-#ifndef CONFIG_BSP_AUDIO_I2S_DIN_GPIO
-    #define CONFIG_BSP_AUDIO_I2S_DIN_GPIO 10
-#endif
-#ifndef CONFIG_BSP_AUDIO_PA_GPIO
-    #define CONFIG_BSP_AUDIO_PA_GPIO 46
-#endif
-#ifndef CONFIG_BSP_AUDIO_SAMPLE_RATE_HZ
-    #define CONFIG_BSP_AUDIO_SAMPLE_RATE_HZ 16000
-#endif
-#ifndef CONFIG_BSP_AUDIO_BITS_PER_SAMPLE
-    #define CONFIG_BSP_AUDIO_BITS_PER_SAMPLE 16
-#endif
-#ifndef CONFIG_BSP_AUDIO_CHANNELS
-    #define CONFIG_BSP_AUDIO_CHANNELS 2
-#endif
-#ifndef CONFIG_BSP_AUDIO_MCLK_MULTIPLE
-    #define CONFIG_BSP_AUDIO_MCLK_MULTIPLE 384
-#endif
-#ifndef CONFIG_BSP_AUDIO_VOLUME_DEFAULT
-    #define CONFIG_BSP_AUDIO_VOLUME_DEFAULT 60
-#endif
-#ifndef CONFIG_BSP_AUDIO_MIC_GAIN_DB
-    #define CONFIG_BSP_AUDIO_MIC_GAIN_DB 30
-#endif
-#ifndef CONFIG_BSP_AUDIO_PA_DEFAULT_ON
-    #define CONFIG_BSP_AUDIO_PA_DEFAULT_ON 1
-#endif
-
+#define BOARD_AUDIO_I2S_PORT (0)
+#define BOARD_AUDIO_I2S_MCLK_GPIO (GPIO_NUM_16)
+#define BOARD_AUDIO_I2S_BCLK_GPIO (GPIO_NUM_9)
+#define BOARD_AUDIO_I2S_LRCK_GPIO (GPIO_NUM_45)
+#define BOARD_AUDIO_I2S_DOUT_GPIO (GPIO_NUM_8)
+#define BOARD_AUDIO_I2S_DIN_GPIO (GPIO_NUM_10)
+#define BOARD_AUDIO_PA_GPIO (GPIO_NUM_46)
+#define BOARD_AUDIO_MIC_GAIN_DB (30)
 #define BOARD_AUDIO_I2C_PORT (0)
 #define BOARD_AUDIO_DEFAULT_MCLK_MULTIPLE (256U)
 #define BOARD_AUDIO_CODEC_PA_REVERTED (false)
@@ -83,6 +48,7 @@ typedef struct board_audio_context
     uint8_t volume;
     bool muted;
     bool pa_enabled;
+    bool configured;
     bool initialized;
     bool started;
     bool codec_close_required;
@@ -177,11 +143,11 @@ static i2s_std_config_t _make_i2s_config(const bsp_audio_config_t *config)
             (i2s_data_bit_width_t)config->bits_per_sample, slot_mode),
         .gpio_cfg =
         {
-            .mclk = CONFIG_BSP_AUDIO_I2S_MCLK_GPIO,
-            .bclk = CONFIG_BSP_AUDIO_I2S_BCLK_GPIO,
-            .ws = CONFIG_BSP_AUDIO_I2S_LRCK_GPIO,
-            .dout = CONFIG_BSP_AUDIO_I2S_DOUT_GPIO,
-            .din = CONFIG_BSP_AUDIO_I2S_DIN_GPIO,
+            .mclk = BOARD_AUDIO_I2S_MCLK_GPIO,
+            .bclk = BOARD_AUDIO_I2S_BCLK_GPIO,
+            .ws = BOARD_AUDIO_I2S_LRCK_GPIO,
+            .dout = BOARD_AUDIO_I2S_DOUT_GPIO,
+            .din = BOARD_AUDIO_I2S_DIN_GPIO,
             .invert_flags =
             {
                 .mclk_inv = false,
@@ -238,10 +204,10 @@ static void _delete_audio_locks(void)
 
 static esp_err_t _set_pa_level(bool enabled)
 {
-#if CONFIG_BSP_AUDIO_PA_GPIO >= 0
+#if BOARD_AUDIO_PA_GPIO >= 0
     s_audio.pa_shutdown_pending = true;
     esp_err_t result = gpio_set_level(
-                           (gpio_num_t)CONFIG_BSP_AUDIO_PA_GPIO,
+                           BOARD_AUDIO_PA_GPIO,
                            enabled == BOARD_AUDIO_CODEC_PA_REVERTED ? 0 : 1);
     if (!enabled && result == ESP_OK)
     {
@@ -257,11 +223,11 @@ static esp_err_t _set_pa_level(bool enabled)
 
 static esp_err_t _configure_pa_gpio(void)
 {
-#if CONFIG_BSP_AUDIO_PA_GPIO >= 0
+#if BOARD_AUDIO_PA_GPIO >= 0
     s_audio.pa_shutdown_pending = true;
     const gpio_config_t config =
     {
-        .pin_bit_mask = (1ULL << CONFIG_BSP_AUDIO_PA_GPIO),
+        .pin_bit_mask = (1ULL << BOARD_AUDIO_PA_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -401,7 +367,7 @@ static esp_err_t _create_codec_locked(void)
         .ctrl_if = s_audio.ctrl_if,
         .gpio_if = s_audio.gpio_if,
         .codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH,
-        .pa_pin = CONFIG_BSP_AUDIO_PA_GPIO,
+        .pa_pin = BOARD_AUDIO_PA_GPIO,
         .pa_reverted = BOARD_AUDIO_CODEC_PA_REVERTED,
         .master_mode = false,
         .use_mclk = true,
@@ -437,7 +403,7 @@ static esp_err_t _create_codec_locked(void)
 static esp_err_t _init_i2s_locked(void)
 {
     i2s_chan_config_t channel_config =
-        I2S_CHANNEL_DEFAULT_CONFIG(CONFIG_BSP_AUDIO_I2S_PORT, I2S_ROLE_MASTER);
+        I2S_CHANNEL_DEFAULT_CONFIG(BOARD_AUDIO_I2S_PORT, I2S_ROLE_MASTER);
     channel_config.auto_clear_after_cb = true;
     esp_err_t result = i2s_new_channel(&channel_config,
                                        &s_audio.tx_channel,
@@ -477,7 +443,7 @@ static esp_err_t _create_stream_resources_locked(void)
 
     audio_codec_i2s_cfg_t data_config =
     {
-        .port = CONFIG_BSP_AUDIO_I2S_PORT,
+        .port = BOARD_AUDIO_I2S_PORT,
         .rx_handle = s_audio.rx_channel,
         .tx_handle = s_audio.tx_channel,
         .clk_src = 0,
@@ -569,11 +535,11 @@ static esp_err_t _cleanup_audio_locked(void)
     }
     s_audio.initialized = false;
     s_audio.started = false;
-    s_audio.config = bsp_audio_get_default_config();
-    s_audio.volume = CONFIG_BSP_AUDIO_VOLUME_DEFAULT > 100 ?
-                     100 : CONFIG_BSP_AUDIO_VOLUME_DEFAULT;
+    memset(&s_audio.config, 0, sizeof(s_audio.config));
+    s_audio.volume = 0U;
     s_audio.muted = false;
-    s_audio.pa_enabled = CONFIG_BSP_AUDIO_PA_DEFAULT_ON;
+    s_audio.pa_enabled = false;
+    s_audio.configured = false;
     return first_error;
 }
 
@@ -593,18 +559,6 @@ static esp_err_t _apply_output_settings_locked(void)
     }
     result = _set_pa_level(s_audio.pa_enabled);
     return result == ESP_ERR_NOT_SUPPORTED ? ESP_OK : result;
-}
-
-bsp_audio_config_t bsp_audio_get_default_config(void)
-{
-    const bsp_audio_config_t config =
-    {
-        .sample_rate_hz = CONFIG_BSP_AUDIO_SAMPLE_RATE_HZ,
-        .bits_per_sample = CONFIG_BSP_AUDIO_BITS_PER_SAMPLE,
-        .channels = CONFIG_BSP_AUDIO_CHANNELS,
-        .mclk_multiple = CONFIG_BSP_AUDIO_MCLK_MULTIPLE,
-    };
-    return config;
 }
 
 esp_err_t board_audio_init(void *i2c_bus)
@@ -660,16 +614,11 @@ esp_err_t board_audio_init(void *i2c_bus)
     }
 
     s_audio.i2c_bus = i2c_bus;
-    s_audio.config = bsp_audio_get_default_config();
-    if (!_audio_config_valid(&s_audio.config))
-    {
-        result = ESP_ERR_INVALID_ARG;
-        goto cleanup;
-    }
-    s_audio.volume = CONFIG_BSP_AUDIO_VOLUME_DEFAULT > 100 ?
-                     100 : CONFIG_BSP_AUDIO_VOLUME_DEFAULT;
+    memset(&s_audio.config, 0, sizeof(s_audio.config));
+    s_audio.volume = 0U;
     s_audio.muted = false;
-    s_audio.pa_enabled = CONFIG_BSP_AUDIO_PA_DEFAULT_ON;
+    s_audio.pa_enabled = false;
+    s_audio.configured = false;
 
     result = _configure_pa_gpio();
     if (result != ESP_OK && result != ESP_ERR_NOT_SUPPORTED)
@@ -791,6 +740,7 @@ esp_err_t bsp_audio_configure(const bsp_audio_config_t *config)
         goto exit;
     }
     s_audio.config = *config;
+    s_audio.configured = true;
     result = ESP_OK;
 
 exit:
@@ -805,7 +755,7 @@ esp_err_t bsp_audio_start(void)
     {
         return result;
     }
-    if (!s_audio.initialized)
+    if (!s_audio.initialized || !s_audio.configured)
     {
         result = ESP_ERR_INVALID_STATE;
         goto exit;
@@ -847,7 +797,7 @@ esp_err_t bsp_audio_start(void)
         .sample_rate = s_audio.config.sample_rate_hz,
         .mclk_multiple = _effective_mclk_multiple(&s_audio.config),
     };
-#if CONFIG_BSP_AUDIO_PA_GPIO >= 0
+#if BOARD_AUDIO_PA_GPIO >= 0
     s_audio.pa_shutdown_pending = true;
 #endif
     s_audio.codec_close_required = true;
@@ -876,7 +826,7 @@ esp_err_t bsp_audio_start(void)
 
     result = _codec_error(esp_codec_dev_set_in_gain(
                               s_audio.codec_device,
-                              (float)CONFIG_BSP_AUDIO_MIC_GAIN_DB));
+                              (float)BOARD_AUDIO_MIC_GAIN_DB));
     if (result != ESP_OK)
     {
         const esp_err_t cleanup_result = _release_stream_resources_locked();
