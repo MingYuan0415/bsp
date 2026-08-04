@@ -6,6 +6,7 @@
 
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
+#include "board_display_profile.h"
 #include "board_i2c_panel_io.h"
 #include "board_init.h"
 #include "driver/spi_master.h"
@@ -23,32 +24,15 @@
                                       (LCD_QSPI_OPCODE_WRITE_CMD << 24))
 #define TEST_HANDLE(value)          ((void *)(uintptr_t)(value))
 #define LCD_COMMAND_CAPACITY        (16U)
-#define TEST_LCD_HOR_RES            (368U)
 #define TEST_LCD_RGB565_BYTES       (2U)
 #define TEST_ESP32S3_DMA_BYTES      (32U * 1024U)
-#define TEST_DMA_MAX_FULL_LINES     (44U)
 
-_Static_assert(TEST_LCD_HOR_RES * TEST_DMA_MAX_FULL_LINES *
+_Static_assert(BOARD_LCD_HOR_RES * BOARD_LCD_DMA_MAX_FULL_LINES *
                TEST_LCD_RGB565_BYTES <= TEST_ESP32S3_DMA_BYTES,
                "44 RGB565 rows must fit in one ESP32-S3 DMA transfer");
-_Static_assert(TEST_LCD_HOR_RES * (TEST_DMA_MAX_FULL_LINES + 1U) *
+_Static_assert(BOARD_LCD_HOR_RES * (BOARD_LCD_DMA_MAX_FULL_LINES + 1U) *
                TEST_LCD_RGB565_BYTES > TEST_ESP32S3_DMA_BYTES,
                "45 RGB565 rows must exceed one ESP32-S3 DMA transfer");
-
-#if defined(CONFIG_BSP_DISPLAY_TE_SYNC) && CONFIG_BSP_DISPLAY_TE_SYNC
-    #define TEST_TE_SYNC_ENABLED        (true)
-#else
-    #define TEST_TE_SYNC_ENABLED        (false)
-#endif
-
-#if (defined(CONFIG_BSP_DISPLAY_TE_SYNC) && \
-     CONFIG_BSP_DISPLAY_TE_SYNC) || \
-    (defined(CONFIG_BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT) && \
-     CONFIG_BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT)
-#define TEST_PSRAM_DMA_DIRECT_ENABLED (true)
-#else
-#define TEST_PSRAM_DMA_DIRECT_ENABLED (false)
-#endif
 
 typedef struct display_mock_state
 {
@@ -563,7 +547,7 @@ static void _test_panel_failure_hard_resets_hibernated_touch(void)
     assert(!board.display.touch_hibernated);
 }
 
-static void _test_init_configures_dma_by_display_mode(void)
+static void _test_init_uses_board_transport_profile(void)
 {
     _reset_mock();
     board_context_t board =
@@ -574,27 +558,28 @@ static void _test_init_configures_dma_by_display_mode(void)
     };
 
     assert(board_display_init(&board) == ESP_OK);
-    assert(s_mock.psram_dma_direct == TEST_PSRAM_DMA_DIRECT_ENABLED);
+    assert(!s_mock.psram_dma_direct);
     assert(s_mock.lcd_max_transfer_sz ==
-           TEST_LCD_HOR_RES * CONFIG_BSP_DISPLAY_SPI_MAX_TRANSFER_LINES *
+           BOARD_LCD_HOR_RES * BOARD_LCD_SPI_MAX_TRANSFER_LINES *
            TEST_LCD_RGB565_BYTES);
-    if (CONFIG_BSP_DISPLAY_SPI_MAX_TRANSFER_LINES <=
-            TEST_DMA_MAX_FULL_LINES)
-    {
-        assert((unsigned int)s_mock.lcd_max_transfer_sz <=
-               TEST_ESP32S3_DMA_BYTES);
-    }
-    else
-    {
-        assert((unsigned int)s_mock.lcd_max_transfer_sz >
-               TEST_ESP32S3_DMA_BYTES);
-    }
-    assert(s_mock.lcd_pclk_hz == CONFIG_BSP_DISPLAY_SPI_CLOCK_HZ);
-    assert(s_mock.lcd_queue_depth == 2);
-    assert(board.display.port.te.enabled == TEST_TE_SYNC_ENABLED);
-    assert(board.display.port.te.bus_freq_hz == s_mock.lcd_pclk_hz);
-    assert(board.display.port.te.data_lines == 4U);
-    assert(board.display.port.te.bits_per_pixel == 16U);
+    assert((unsigned int)s_mock.lcd_max_transfer_sz <=
+           TEST_ESP32S3_DMA_BYTES);
+    assert(s_mock.lcd_pclk_hz == BOARD_LCD_SPI_CLOCK_HZ);
+    assert(s_mock.lcd_queue_depth == BOARD_LCD_SPI_TRANS_QUEUE_DEPTH);
+    assert(board.display.port.transport.kind == BSP_DISPLAY_TRANSPORT_QSPI);
+    assert(board.display.port.transport.clock_hz == s_mock.lcd_pclk_hz);
+    assert(board.display.port.transport.max_transfer_lines ==
+           BOARD_LCD_SPI_MAX_TRANSFER_LINES);
+    assert(board.display.port.transport.dma_max_full_lines ==
+           BOARD_LCD_DMA_MAX_FULL_LINES);
+    assert(board.display.port.transport.transaction_queue_depth ==
+           BOARD_LCD_SPI_TRANS_QUEUE_DEPTH);
+    assert(board.display.port.transport.data_lines ==
+           BOARD_LCD_SPI_DATA_LINES);
+    assert(board.display.port.transport.bits_per_pixel ==
+           BOARD_LCD_BITS_PER_PIXEL);
+    assert(!board.display.port.transport.psram_dma_direct);
+    assert(!board.display.port.te.enabled);
     assert(s_mock.init_brightness_zero_seen);
     assert(!s_mock.init_brightness_nonzero_seen);
     assert(s_mock.init_te_enabled_seen);
@@ -734,7 +719,7 @@ int main(void)
     _test_hidden_scanout_suspend_sends_display_off();
     _test_panel_failure_restores_reset_quiesced_touch();
     _test_panel_failure_hard_resets_hibernated_touch();
-    _test_init_configures_dma_by_display_mode();
+    _test_init_uses_board_transport_profile();
     _test_hidden_brightness_is_cached_without_panel_write();
     _test_resume_prepare_starts_hidden_scanout_then_commits();
     _test_brightness_commit_failure_rehides_and_can_suspend();

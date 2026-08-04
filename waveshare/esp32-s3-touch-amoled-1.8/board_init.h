@@ -10,6 +10,7 @@
 #include "esp_io_expander.h"
 
 #include "bsp_hal.h"
+#include "board_display_profile.h"
 #include "board_power.h"
 #include "board_rtc.h"
 #include "board_sdspi.h"
@@ -21,8 +22,6 @@ extern "C" {
 #endif
 
 #define BOARD_I2C_CLK_HZ                  (200000)
-#define BOARD_LCD_HOR_RES                 (368)
-#define BOARD_LCD_VER_RES                 (448)
 #define BOARD_I2C_PIN_INT                 (GPIO_NUM_21)
 #define BOARD_I2C_PIN_RST                 (GPIO_NUM_NC)
 #define BOARD_HOME_KEY_GPIO               (GPIO_NUM_0)

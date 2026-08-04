@@ -1,8 +1,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "sdkconfig.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -16,6 +14,7 @@
 #include "esp_lcd_sh8601.h"
 #include "esp_lcd_touch_ft5x06.h"
 
+#include "board_display_profile.h"
 #include "board_i2c_panel_io.h"
 #include "board_init.h"
 
@@ -32,11 +31,13 @@
 #define LCD_SPI_PIN_DATA2               (GPIO_NUM_6)
 #define LCD_SPI_PIN_DATA3               (GPIO_NUM_7)
 #define LCD_TE_PIN                       (GPIO_NUM_13)
-#define LCD_SPI_CLOCK_HZ                (CONFIG_BSP_DISPLAY_SPI_CLOCK_HZ)
-#define LCD_SPI_DATA_LINES              (4)
-#define LCD_SPI_TRANS_QUEUE_DEPTH       CONFIG_BSP_DISPLAY_SPI_TRANS_QUEUE_DEPTH
-#define LCD_SPI_MAX_TRANSFER_LINES \
-    (CONFIG_BSP_DISPLAY_SPI_MAX_TRANSFER_LINES)
+#define LCD_SPI_CLOCK_HZ                BOARD_LCD_SPI_CLOCK_HZ
+#define LCD_SPI_DATA_LINES              BOARD_LCD_SPI_DATA_LINES
+#define LCD_SPI_TRANS_QUEUE_DEPTH       BOARD_LCD_SPI_TRANS_QUEUE_DEPTH
+#define LCD_SPI_MAX_TRANSFER_LINES      BOARD_LCD_SPI_MAX_TRANSFER_LINES
+#define LCD_BIT_PER_PIXEL               BOARD_LCD_BITS_PER_PIXEL
+#define LCD_TE_SYNC_ENABLED             ((bool)BOARD_LCD_TE_SYNC)
+#define LCD_PSRAM_DMA_DIRECT_ENABLED    ((bool)BOARD_LCD_PSRAM_DMA_DIRECT)
 
 #define LCD_CMD_WRCTRLD                 (0x53)
 #define LCD_WRCTRLD_BCTRL_BIT           (0x20)
@@ -57,31 +58,23 @@
 #define FT5X06_REG_POWER_MODE           (0xA5)
 #define FT5X06_POWER_MODE_HIBERNATE     (3)
 
-#if defined(CONFIG_BSP_DISPLAY_TE_SYNC) && CONFIG_BSP_DISPLAY_TE_SYNC
-    #define LCD_TE_SYNC_ENABLED             (true)
-#else
-    #define LCD_TE_SYNC_ENABLED             (false)
-#endif
-
-#if defined(CONFIG_BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT) && \
-    CONFIG_BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT
-    #define LCD_NON_TE_PSRAM_DMA_DIRECT_ENABLED (true)
-#else
-    #define LCD_NON_TE_PSRAM_DMA_DIRECT_ENABLED (false)
-#endif
-
-#define LCD_PSRAM_DMA_DIRECT_ENABLED \
-    (LCD_TE_SYNC_ENABLED || LCD_NON_TE_PSRAM_DMA_DIRECT_ENABLED)
-
-#if CONFIG_LV_COLOR_DEPTH == 32
-    #define LCD_BIT_PER_PIXEL               (24)
-#elif CONFIG_LV_COLOR_DEPTH == 16
-    #define LCD_BIT_PER_PIXEL               (16)
-#endif
-
 #define LCD_SPI_MAX_TRANSFER_SZ         (BOARD_LCD_HOR_RES * \
                                           LCD_SPI_MAX_TRANSFER_LINES * \
                                           LCD_BIT_PER_PIXEL / 8)
+
+_Static_assert(BOARD_LCD_SPI_MAX_TRANSFER_LINES > 0U &&
+               BOARD_LCD_SPI_MAX_TRANSFER_LINES <= BOARD_LCD_VER_RES,
+               "LCD transfer height must fit the panel");
+_Static_assert(BOARD_LCD_DMA_MAX_FULL_LINES > 0U &&
+               BOARD_LCD_DMA_MAX_FULL_LINES <= BOARD_LCD_VER_RES,
+               "LCD DMA row limit must fit the panel");
+_Static_assert(BOARD_LCD_SPI_TRANS_QUEUE_DEPTH > 0U,
+               "LCD transaction queue must not be empty");
+_Static_assert(BOARD_LCD_SPI_MAX_TRANSFER_LINES <=
+               BOARD_LCD_DMA_MAX_FULL_LINES,
+               "board profile must keep one request within a DMA segment");
+_Static_assert(BOARD_LCD_BITS_PER_PIXEL == 16U,
+               "the Waveshare display profile requires RGB565");
 
 static const sh8601_lcd_init_cmd_t s_lcd_init_cmds[] =
 {
@@ -215,10 +208,6 @@ static esp_err_t _board_lcd_bus_init(board_context_t *board)
     /* LVGL draw strips and SPI DMA chunks are independently configurable.
      * Queue depth two bounds bounce memory to two transport chunks. */
     io_config.flags.psram_dma_direct = LCD_PSRAM_DMA_DIRECT_ENABLED;
-
-#if LCD_SPI_CLOCK_HZ == 80000000
-    LOG_W("LCD SPI 80 MHz exceeds SH8601A QSPI timing; experimental only");
-#endif
 
     if (result == ESP_OK)
     {
@@ -373,13 +362,21 @@ esp_err_t board_display_init(board_context_t *board)
 
     board->display.port.width = BOARD_LCD_HOR_RES;
     board->display.port.height = BOARD_LCD_VER_RES;
+    board->display.port.transport = (bsp_display_transport_t)
+    {
+        .kind = BSP_DISPLAY_TRANSPORT_QSPI,
+        .clock_hz = LCD_SPI_CLOCK_HZ,
+        .max_transfer_lines = LCD_SPI_MAX_TRANSFER_LINES,
+        .dma_max_full_lines = BOARD_LCD_DMA_MAX_FULL_LINES,
+        .transaction_queue_depth = LCD_SPI_TRANS_QUEUE_DEPTH,
+        .data_lines = LCD_SPI_DATA_LINES,
+        .bits_per_pixel = LCD_BIT_PER_PIXEL,
+        .psram_dma_direct = LCD_PSRAM_DMA_DIRECT_ENABLED,
+    };
     board->display.port.te = (bsp_display_te_config_t)
     {
         .enabled = LCD_TE_SYNC_ENABLED,
         .gpio_num = LCD_TE_PIN,
-        .bus_freq_hz = LCD_SPI_CLOCK_HZ,
-        .data_lines = LCD_SPI_DATA_LINES,
-        .bits_per_pixel = LCD_BIT_PER_PIXEL,
         .intr_type = GPIO_INTR_POSEDGE,
     };
 

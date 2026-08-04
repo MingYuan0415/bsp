@@ -34,7 +34,16 @@ idf.py build
 `board_audio_init()` 完成后 PA 保持关闭；未先调用 `bsp_audio_configure()` 时
 `bsp_audio_start()` 返回 `ESP_ERR_INVALID_STATE`。
 
-`MicroTech Project Config -> Board display` 将 LCD SPI 项目经验默认固定为 40 MHz，而非数据手册保证的安全频率：SH8601A preliminary Table 14 的 Quad SPI 最小写周期为 50 ns，名义上对应 20 MHz。80 MHz 使用 ESP32-S3 APB /1 的实际输出，属于四倍名义上限的显式、单板实验选项；当前样机可以运行，但可能出现撕裂、花屏或冻结，禁止作为生产配置。ESP32-S3 的默认 80 MHz APB SPI 时钟不能精确分频出 60 MHz，因此不提供 60 MHz 档位。`BSP_DISPLAY_SPI_MAX_TRANSFER_LINES` 默认 10 行，`BSP_DISPLAY_SPI_TRANS_QUEUE_DEPTH` 默认 2，`BSP_DISPLAY_NON_TE_PSRAM_DMA_DIRECT` 默认关闭，`BSP_DISPLAY_TE_SYNC` 也保持默认关闭。当前板卡在 ESP-IDF 6.0.2 下启用非 TE direct/10 后已观察到顶部蓝线与 GUI 冻结，Direct 开关只保留为问题复现入口，禁止生产启用。Host 中的 Direct 与 80 MHz 测试只验证配置透传，不代表硬件可用。
+显示传输配置属于板级 profile，不通过 Kconfig 覆盖。当前 Waveshare 后端固定为
+368 x 448 RGB565、40 MHz QSPI、10 行逻辑传输、44 行物理 DMA 上限、queue depth 2，
+并关闭 PSRAM Direct DMA 和 TE 同步。40 MHz 是项目经验值，并非 SH8601A preliminary
+Table 14 保证的频率；既有 80 MHz 对照收益不足。ESP-IDF 6.0.2 下启用非 TE Direct
+DMA 已观察到顶部蓝线和 GUI 冻结，因此不再保留生产或实验配置入口。
+
+新增板型必须提供独立的私有 display profile 和 HAL backend，并以对应 `IDF_TARGET`
+限制板型选项。组件依赖只能按 target 或 manifest rule 选择，不能通过
+`CONFIG_BOARD_TYPE_*` 改变 `REQUIRES`/`PRIV_REQUIRES`。未注册 target 必须停止配置，
+不得回退到本板后端。
 
 ## 硬件适配
 
@@ -45,7 +54,7 @@ idf.py build
 | SD | SDSPI 使用 SPI3，MOSI/MISO/CLK 为 GPIO1/3/2，EXIO7 经 GPIO wrapper 作为低有效 CS，默认 20 MHz | `BSP_CAPABILITY_SD`、`bsp_hal_get_sd()`；mount/unmount 和挂载状态查询 |
 | AXP2101 | EXIO5 为低有效 IRQ；轮询时读取并清除 latched status | `BSP_CAPABILITY_POWER`、`bsp_hal_get_power()`；`get_info` 和 `poll_irq` |
 | PCF85063 | EXIO3 为低有效 RTC_INT；支持重复日历 alarm、pending 查询和清除 | `BSP_CAPABILITY_RTC`、`bsp_hal_get_rtc()`；`alarm_configure/disable/get_status/clear/poll_interrupt` |
-| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿；`BSP_DISPLAY_TE_SYNC` 默认关闭。App Manager 使用两块 60 行 PSRAM 绘制条带（共 88,320 B），BSP 默认将单次 SPI DMA 分块限制为 10 行，并以深度 2 队列将内部 DMA bounce 峰值限制为 14,720 B；非 TE 默认不启用 PSRAM 直 DMA | 显式启用配置后，`bsp_display_port_t.te` 导出 GPIO 上升沿、所选 SPI 频率（项目经验默认 40 MHz）、4 data lines 和 16 bpp 参数，App Manager 使用 `ESP_LV_ADAPTER_TEAR_AVOID_MODE_TE_SYNC` |
+| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿，板级 profile 固定关闭。App Manager 使用两块 60 行 PSRAM 绘制条带（共 88,320 B），BSP 将单次 SPI DMA 分块限制为 10 行，并以深度 2 队列将内部 DMA bounce 峰值限制为 14,720 B；非 TE 不启用 PSRAM 直 DMA | `bsp_display_port_t.transport` 导出 QSPI、40 MHz、4 data lines、16 bpp、传输和 DMA 行数；`te` 仅导出同步状态、GPIO 与边沿 |
 
 AXP2101 默认 profile 与原理图一致：DCDC1/2/3/4 为 3.3/0.9/1.2/1.8 V，DCDC5 关闭；ALDO1/2/3/4 为 3.3/3.3/3.0/1.8 V；BLDO1/2 为 1.2/2.8 V；CPUSLDO 为 1.2 V；DLDO1/2 关闭。充电参数为预充 50 mA、恒流 200 mA、终止 25 mA、目标 4.1 V，并启用电池检测、Gauge、主电池充电以及电池/VBUS/电源键/充电状态 IRQ。
 
@@ -75,7 +84,10 @@ cmake --build /tmp/bsp-host
 ctest --test-dir /tmp/bsp-host --output-on-failure
 ```
 
-该套件覆盖显示状态/休眠、AXP2101 callback 与默认 profile、QMI8658C 转换和 EXIO6 轮询、PCF85063 alarm 与 EXIO3、ES8311 格式/生命周期，以及 SDSPI 虚拟 CS 和失败清理重试。App Manager adapter 测试还会校验 TE-off partial 路径和显式启用后的 TE sync 参数映射：
+该套件覆盖固定显示 transport profile、显示状态/休眠、AXP2101 callback 与默认
+profile、QMI8658C 转换和 EXIO6 轮询、PCF85063 alarm 与 EXIO3、ES8311
+格式/生命周期，以及 SDSPI 虚拟 CS 和失败清理重试。App Manager adapter 测试还会
+校验 TE-off partial 路径和 transport descriptor 映射：
 
 ```sh
 cmake -S layers/app_manager/app_core/tests/host -B /tmp/app-manager-host -G Ninja

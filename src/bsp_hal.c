@@ -240,9 +240,15 @@ esp_err_t bsp_display_set_port(const bsp_display_port_t *port)
     if (port == NULL || port->width == 0 || port->height == 0 ||
             port->panel == NULL || port->panel_io == NULL ||
             port->touch == NULL || port->touch_io == NULL ||
-            (port->te.enabled &&
-             (port->te.gpio_num < 0 || port->te.bus_freq_hz == 0U ||
-              port->te.data_lines == 0U || port->te.bits_per_pixel == 0U)))
+            port->transport.kind == BSP_DISPLAY_TRANSPORT_UNKNOWN ||
+            port->transport.clock_hz == 0U ||
+            port->transport.max_transfer_lines == 0U ||
+            port->transport.max_transfer_lines > port->height ||
+            port->transport.dma_max_full_lines == 0U ||
+            port->transport.transaction_queue_depth == 0U ||
+            port->transport.data_lines == 0U ||
+            port->transport.bits_per_pixel == 0U ||
+            (port->te.enabled && port->te.gpio_num < 0))
     {
         return result;
     }

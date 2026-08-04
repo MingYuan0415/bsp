@@ -14,15 +14,32 @@
 extern "C" {
 #endif
 
+/** @brief Display transport implementations exposed by a board backend. */
+typedef enum bsp_display_transport_kind
+{
+    BSP_DISPLAY_TRANSPORT_UNKNOWN = 0,
+    BSP_DISPLAY_TRANSPORT_QSPI,
+} bsp_display_transport_kind_t;
+
+/** @brief Board-owned display transport profile. */
+typedef struct bsp_display_transport
+{
+    bsp_display_transport_kind_t kind; /**< Physical display bus type. */
+    uint32_t clock_hz;                 /**< Transport clock in hertz. */
+    uint16_t max_transfer_lines;       /**< Logical panel request height. */
+    uint16_t dma_max_full_lines;       /**< Full rows per physical DMA segment. */
+    uint8_t transaction_queue_depth;   /**< Panel IO transaction capacity. */
+    uint8_t data_lines;                /**< Parallel transport data-line count. */
+    uint8_t bits_per_pixel;            /**< Physical panel color depth. */
+    bool psram_dma_direct;             /**< Whether panel DMA reads PSRAM directly. */
+} bsp_display_transport_t;
+
 /** @brief Physical tearing-effect synchronization parameters. */
 typedef struct bsp_display_te_config
 {
-    bool enabled;           /**< Whether the panel TE signal is wired. */
-    int gpio_num;           /**< ESP GPIO carrying the panel TE signal. */
-    uint32_t bus_freq_hz;   /**< Display transport clock in hertz. */
-    uint8_t data_lines;     /**< Parallel transport data-line count. */
-    uint8_t bits_per_pixel; /**< Physical panel color depth. */
-    int intr_type;          /**< GPIO interrupt type for the TE edge. */
+    bool enabled;  /**< Whether synchronization is active. */
+    int gpio_num;  /**< ESP GPIO carrying the panel TE signal. */
+    int intr_type; /**< GPIO interrupt type for the TE edge. */
 } bsp_display_te_config_t;
 
 /** @brief LCD, touch, and synchronization data exported to the UI adapter. */
@@ -34,7 +51,8 @@ typedef struct bsp_display_port
     esp_lcd_panel_io_handle_t panel_io;    /**< LCD transport handle. */
     esp_lcd_touch_handle_t touch;          /**< Touch controller handle. */
     esp_lcd_panel_io_handle_t touch_io;    /**< Touch transport handle. */
-    bsp_display_te_config_t te;             /**< Physical TE configuration. */
+    bsp_display_transport_t transport;     /**< Board-owned transport profile. */
+    bsp_display_te_config_t te;            /**< Physical TE configuration. */
 } bsp_display_port_t;
 
 /** @brief Display dimensions available without exposing device handles. */
