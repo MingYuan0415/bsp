@@ -9,6 +9,10 @@
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
+#if CONFIG_MAIN_PROJECT_TASK_AFFINITY_CPU0 || \
+    CONFIG_MAIN_PROJECT_TASK_AFFINITY_CPU1
+    #include "freertos/idf_additions.h"
+#endif
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
@@ -535,13 +539,12 @@ static void _board_input_clear_runtime_state(void)
 
 static esp_err_t _board_input_create_task(void)
 {
-    const BaseType_t task_result = xTaskCreate(
-                                       _board_input_task,
-                                       "board_input",
-                                       BOARD_INPUT_TASK_STACK_SIZE,
-                                       NULL,
+    const BaseType_t task_result = xTaskCreatePinnedToCore(
+                                       _board_input_task, "board_input",
+                                       BOARD_INPUT_TASK_STACK_SIZE, NULL,
                                        BOARD_INPUT_TASK_PRIORITY,
-                                       &s_input_task);
+                                       &s_input_task,
+                                       CONFIG_MAIN_PROJECT_TASK_CORE_ID);
     esp_err_t result = ESP_OK;
     if (task_result != pdPASS)
     {
@@ -550,6 +553,14 @@ static esp_err_t _board_input_create_task(void)
         s_input_task = NULL;
         result = ESP_ERR_NO_MEM;
     }
+#if CONFIG_MAIN_PROJECT_TASK_AFFINITY_CPU0 || \
+    CONFIG_MAIN_PROJECT_TASK_AFFINITY_CPU1
+    if (task_result == pdPASS)
+    {
+        LOG_I("task affinity name=board_input core=%d",
+              (int)xTaskGetCoreID(s_input_task));
+    }
+#endif
     return result;
 }
 

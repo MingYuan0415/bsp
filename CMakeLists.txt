@@ -73,6 +73,7 @@ idf_component_register(
         esp_driver_i2s
         esp_driver_spi
         esp_driver_sdspi
+        freertos
         esp_timer
         fatfs
         sdmmc
