@@ -69,7 +69,7 @@ static atomic_uint s_pause_generation;
 static atomic_uint s_pause_request_generation;
 static atomic_uint s_paused_generation;
 static atomic_uint s_resumed_generation;
-static atomic_bool s_stop_tail_complete = ATOMIC_VAR_INIT(true);
+static atomic_bool s_stop_tail_complete = true;
 static bool s_initialized = false;
 static bool s_quiesced = false;
 static bool s_resume_pending = false;

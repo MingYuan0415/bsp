@@ -235,3 +235,23 @@ target_compile_options(board_audio_lifecycle_test PRIVATE
 )
 
 add_test(NAME board_audio_lifecycle_test COMMAND board_audio_lifecycle_test)
+
+set(BSP_C_TEST_TARGETS
+    board_display_state_test
+    board_display_suspend_test
+    board_imu_test
+    board_tca9554_test
+    board_imu_bridge_test
+    mt_pcf85063_alarm_test
+    board_rtc_alarm_test
+    board_audio_format_test
+    board_sdspi_test
+    board_audio_lifecycle_test)
+foreach(target IN LISTS BSP_C_TEST_TARGETS)
+    target_compile_options(${target} PRIVATE -Wpedantic)
+endforeach()
+
+target_compile_options(xpowers_behavior_test PRIVATE -Wpedantic -Werror)
+set_source_files_properties(
+    ../../XPowersLib/src/XPowersLibInterface.cpp
+    PROPERTIES COMPILE_OPTIONS "-Wno-error")

@@ -37,7 +37,7 @@ idf.py build
 显示传输配置属于板级 profile，不通过 Kconfig 覆盖。当前 Waveshare 后端固定为
 368 x 448 RGB565、40 MHz QSPI、10 行逻辑传输、44 行物理 DMA 上限、queue depth 2，
 并关闭 PSRAM Direct DMA 和 TE 同步。40 MHz 是项目经验值，并非 SH8601A preliminary
-Table 14 保证的频率；既有 80 MHz 对照收益不足。ESP-IDF 6.0.2 下启用非 TE Direct
+Table 14 保证的频率；既有 80 MHz 对照收益不足。ESP-IDF 6.1 下启用非 TE Direct
 DMA 已观察到顶部蓝线和 GUI 冻结，因此不再保留生产或实验配置入口。
 
 新增板型必须提供独立的私有 display profile 和 HAL backend，并以对应 `IDF_TARGET`
