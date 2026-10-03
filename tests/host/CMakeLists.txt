@@ -236,9 +236,30 @@ target_compile_options(board_audio_lifecycle_test PRIVATE
 
 add_test(NAME board_audio_lifecycle_test COMMAND board_audio_lifecycle_test)
 
+add_executable(board_display_lease_test
+    board_display_lease_test.c
+    ../../src/bsp_hal.c
+)
+
+target_include_directories(board_display_lease_test PRIVATE
+    hal_fakes
+    fakes
+    ../../include
+)
+
+target_compile_features(board_display_lease_test PRIVATE c_std_11)
+target_compile_options(board_display_lease_test PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+)
+
+add_test(NAME board_display_lease_test COMMAND board_display_lease_test)
+
 set(BSP_C_TEST_TARGETS
     board_display_state_test
     board_display_suspend_test
+    board_display_lease_test
     board_imu_test
     board_tca9554_test
     board_imu_bridge_test

@@ -693,7 +693,10 @@ static esp_err_t _board_init_required_resources(void)
 
 static void _board_init_optional_resources(void)
 {
-    esp_err_t result = board_init_stage_gate(BOARD_INIT_STAGE_RTC);
+    esp_err_t result = ESP_OK;
+
+#if defined(MT_BOARD_HAS_RTC)
+    result = board_init_stage_gate(BOARD_INIT_STAGE_RTC);
     if (result == ESP_OK)
     {
         result = board_rtc_init(s_board.i2c_bus,
@@ -708,7 +711,9 @@ static void _board_init_optional_resources(void)
     {
         s_board.capabilities |= BSP_CAPABILITY_RTC;
     }
+#endif
 
+#if defined(MT_BOARD_HAS_POWER)
     result = board_init_stage_gate(BOARD_INIT_STAGE_POWER);
     if (result == ESP_OK)
     {
@@ -722,7 +727,9 @@ static void _board_init_optional_resources(void)
     {
         s_board.capabilities |= BSP_CAPABILITY_POWER;
     }
+#endif
 
+#if defined(MT_BOARD_HAS_IMU)
     result = board_init_stage_gate(BOARD_INIT_STAGE_IMU);
     if (result == ESP_OK)
     {
@@ -752,7 +759,9 @@ static void _board_init_optional_resources(void)
     {
         s_board.capabilities |= BSP_CAPABILITY_IMU;
     }
+#endif
 
+#if defined(MT_BOARD_HAS_AUDIO)
     result = board_init_stage_gate(BOARD_INIT_STAGE_AUDIO);
     if (result == ESP_OK)
     {
@@ -774,11 +783,16 @@ static void _board_init_optional_resources(void)
         s_board.audio_initialized = true;
         s_board.capabilities |= BSP_CAPABILITY_AUDIO;
     }
+#endif
 
+#if defined(MT_BOARD_HAS_SD)
     if (s_board.io_expander_device != NULL)
     {
         s_board.capabilities |= BSP_CAPABILITY_SD;
     }
+#endif
+
+    (void)result;
 }
 
 static esp_err_t _board_register_interfaces(void)

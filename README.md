@@ -68,7 +68,11 @@ SD 的 `/sdcard`、最多 5 个文件和 16 KiB allocation unit 由根运行时�
 
 先调用 `bsp_init()`，再通过 `bsp_get_capabilities()` 判断能力。显示、触摸和输入是初始化成功的必需能力；RTC、PMU、IMU 和音频初始化失败时不会阻止 BSP 就绪，SD 能力表示接线和 expander 可用，消费者仍须处理无卡或挂载失败。使用可选功能前应检查对应能力位和 `is_available()`，完成所有消费者停机后再调用 `bsp_deinit()`。
 
-`bsp_display_get_port()` 和 `bsp_hal_get_*()` 返回借用对象，不提供生命周期租约；初始化未完成、反初始化开始后或反初始化完成后不得保留或使用。
+`bsp_display_get_port()` 和 `bsp_hal_get_*()` 返回借用对象；显示端口由 BSP 生命周期所有者
+（`app_runtime`）通过 `bsp_display_acquire()` 独占持有（同一时刻仅一个持有者），其余组件在该租约下消费端口，
+不得自行获取。停机时用 `bsp_display_release_and_deinit()` 原子地释放租约并关闭 BSP，避免释放与
+`bsp_deinit()` 之间被新获取插入；若仍有消费者持有租约，`bsp_deinit()` 返回 `ESP_ERR_INVALID_STATE`
+并记录持有者名称。其余操作表不提供生命周期租约：初始化未完成、反初始化开始后或反初始化完成后不得保留或使用。
 
 screen 操作只实现板级阶段，不负责同步上层消费者。调用 `suspend()` 前必须停止触摸/显示消费者、暂停渲染 worker，并通过 panel IO 栅栏排空 SPI/DMA。恢复时先调用 `resume_prepare()`，再恢复渲染、强制完整刷新并完成栅栏，最后调用 `resume_commit()` 显示面板和恢复触摸。输入任务休眠按 `prepare_sleep -> complete_sleep` 配对。
 

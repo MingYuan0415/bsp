@@ -55,6 +55,20 @@ typedef struct bsp_display_port
     bsp_display_te_config_t te;            /**< Physical TE configuration. */
 } bsp_display_port_t;
 
+/**
+ * @brief Exclusive display consumer lease.
+ *
+ * The BSP display port has one owner at a time. The lifecycle owner acquires a
+ * lease before exposing the port and releases it after stopping every consumer.
+ * A stale lease identifier is rejected, so a consumer that retained an old
+ * lease cannot release a newer owner's lease.
+ */
+typedef struct bsp_display_lease
+{
+    uint32_t id;       /**< Non-zero lease identifier; zero is invalid. */
+    const char *owner; /**< Static owner name for diagnostics; may be NULL. */
+} bsp_display_lease_t;
+
 /** @brief Display dimensions available without exposing device handles. */
 typedef struct bsp_display_metrics
 {
@@ -354,6 +368,51 @@ const bsp_display_port_t *bsp_display_get_port(void);
  * @return ESP_OK on success; otherwise an ESP-IDF error.
  */
 esp_err_t bsp_display_set_port(const bsp_display_port_t *port);
+
+/**
+ * @brief Acquire exclusive access to the committed display port.
+ *
+ * The BSP lifecycle owner acquires the lease before exposing the display port
+ * to consumers. Only one lease may be held at a time and it must be released,
+ * with the same value returned here, before another acquire or bsp_deinit().
+ *
+ * @param owner is a static diagnostic name; may be NULL.
+ * @param lease receives the acquired lease on success.
+ * @return ESP_OK on success; ESP_ERR_INVALID_ARG for a NULL lease;
+ *         ESP_ERR_INVALID_STATE when the BSP is not READY, the display port is
+ *         not committed, or another consumer already holds the lease.
+ */
+esp_err_t bsp_display_acquire(const char *owner, bsp_display_lease_t *lease);
+
+/**
+ * @brief Release a display lease acquired by bsp_display_acquire().
+ *
+ * @param lease is the value returned by bsp_display_acquire().
+ * @return ESP_OK on success; ESP_ERR_INVALID_ARG for a zero or stale lease.
+ */
+esp_err_t bsp_display_release(const bsp_display_lease_t *lease);
+
+/**
+ * @brief Release the display lease and tear the BSP down in one transaction.
+ *
+ * Atomically consumes the lease and enters BSP_INIT_STATE_DEINITIALIZING, so no
+ * new acquire can interleave between the release and bsp_deinit(). Use this in
+ * the lifecycle unwind instead of bsp_display_release() followed by a separate
+ * bsp_deinit().
+ *
+ * @param lease is the value returned by bsp_display_acquire().
+ * @return ESP_OK on success (or when already uninitialized); otherwise an
+ *         argument or board cleanup error. A board cleanup failure leaves the
+ *         BSP in BSP_INIT_STATE_FAILED; call bsp_deinit() to retry.
+ */
+esp_err_t bsp_display_release_and_deinit(const bsp_display_lease_t *lease);
+
+/**
+ * @brief Report whether the committed display port is currently leased.
+ *
+ * @return true when a consumer holds the display lease.
+ */
+bool bsp_display_is_leased(void);
 
 /**
  * @brief Register complete screen operations during BSP initialization.

@@ -3,6 +3,10 @@
  * @note   Thread-safe registry with transactional board initialization.
  */
 
+#define DBG_TAG "bsp_hal"
+#define DBG_LVL DBG_INFO
+#include "mt_log.h"
+
 #include "bsp_hal.h"
 #include "board_init.h"
 #include "esp_err.h"
@@ -27,6 +31,8 @@ static bool s_audio_valid  = false;
 static bool s_sd_valid     = false;
 
 static bsp_display_port_t s_display_port = {0};
+static bsp_display_lease_t s_display_lease = {0};
+static uint32_t s_display_lease_counter = 0;
 
 static bsp_init_state_t s_init_state = BSP_INIT_STATE_UNINITIALIZED;
 static bsp_capabilities_t s_capabilities = BSP_CAPABILITY_NONE;
@@ -47,6 +53,7 @@ static void _bsp_hal_clear_registry(void)
     memset(&s_audio_ops, 0, sizeof(s_audio_ops));
     memset(&s_sd_ops, 0, sizeof(s_sd_ops));
     memset(&s_display_port, 0, sizeof(s_display_port));
+    memset(&s_display_lease, 0, sizeof(s_display_lease));
     memset(&s_wakeup_descriptor, 0, sizeof(s_wakeup_descriptor));
     s_screen_valid = false;
     s_rtc_valid = false;
@@ -116,10 +123,25 @@ esp_err_t bsp_init(void)
     return result;
 }
 
+static esp_err_t _bsp_hal_commit_deinit(void)
+{
+    esp_err_t result = board_deinit();
+
+    taskENTER_CRITICAL(&s_registry_lock);
+    _bsp_hal_clear_registry();
+    s_init_state = result == ESP_OK ?
+                   BSP_INIT_STATE_UNINITIALIZED : BSP_INIT_STATE_FAILED;
+    taskEXIT_CRITICAL(&s_registry_lock);
+
+    return result;
+}
+
 esp_err_t bsp_deinit(void)
 {
     esp_err_t result = ESP_OK;
     bool deinitialize = false;
+    bool lease_held = false;
+    const char *lease_owner = NULL;
     taskENTER_CRITICAL(&s_registry_lock);
     if (s_init_state == BSP_INIT_STATE_UNINITIALIZED)
     {
@@ -130,26 +152,31 @@ esp_err_t bsp_deinit(void)
     {
         result = ESP_ERR_INVALID_STATE;
     }
+    else if (s_display_lease.id != 0U)
+    {
+        /* A consumer still owns the display; it must release before deinit. */
+        result = ESP_ERR_INVALID_STATE;
+        lease_held = true;
+        lease_owner = s_display_lease.owner;
+    }
     else
     {
         s_init_state = BSP_INIT_STATE_DEINITIALIZING;
         deinitialize = true;
     }
     taskEXIT_CRITICAL(&s_registry_lock);
+
+    if (lease_held)
+    {
+        LOG_W("deinit refused: display lease held by %s",
+              lease_owner != NULL ? lease_owner : "unknown");
+    }
     if (!deinitialize)
     {
         return result;
     }
 
-    result = board_deinit();
-
-    taskENTER_CRITICAL(&s_registry_lock);
-    _bsp_hal_clear_registry();
-    s_init_state = result == ESP_OK ?
-                   BSP_INIT_STATE_UNINITIALIZED : BSP_INIT_STATE_FAILED;
-    taskEXIT_CRITICAL(&s_registry_lock);
-
-    return result;
+    return _bsp_hal_commit_deinit();
 }
 
 bool bsp_is_initialized(void)
@@ -269,6 +296,117 @@ exit:
         taskEXIT_CRITICAL(&s_registry_lock);
     }
     return result;
+}
+
+esp_err_t bsp_display_acquire(const char *owner, bsp_display_lease_t *lease)
+{
+    esp_err_t result = ESP_ERR_INVALID_ARG;
+    bool lock_owned = false;
+    if (lease == NULL)
+    {
+        return result;
+    }
+    taskENTER_CRITICAL(&s_registry_lock);
+    lock_owned = true;
+    if (s_init_state != BSP_INIT_STATE_READY)
+    {
+        result = ESP_ERR_INVALID_STATE;
+        goto exit;
+    }
+    if (s_display_port.panel == NULL || s_display_port.panel_io == NULL ||
+            s_display_port.touch == NULL || s_display_port.touch_io == NULL)
+    {
+        result = ESP_ERR_INVALID_STATE;
+        goto exit;
+    }
+    if (s_display_lease.id != 0U)
+    {
+        result = ESP_ERR_INVALID_STATE;
+        goto exit;
+    }
+
+    ++s_display_lease_counter;
+    if (s_display_lease_counter == 0U)
+    {
+        ++s_display_lease_counter;
+    }
+    s_display_lease.id = s_display_lease_counter;
+    s_display_lease.owner = owner;
+    *lease = s_display_lease;
+    result = ESP_OK;
+
+exit:
+    if (lock_owned)
+    {
+        taskEXIT_CRITICAL(&s_registry_lock);
+    }
+    return result;
+}
+
+esp_err_t bsp_display_release(const bsp_display_lease_t *lease)
+{
+    esp_err_t result = ESP_ERR_INVALID_ARG;
+    if (lease == NULL || lease->id == 0U)
+    {
+        return result;
+    }
+    taskENTER_CRITICAL(&s_registry_lock);
+    if (s_display_lease.id == lease->id)
+    {
+        s_display_lease.id = 0U;
+        s_display_lease.owner = NULL;
+        result = ESP_OK;
+    }
+    taskEXIT_CRITICAL(&s_registry_lock);
+    return result;
+}
+
+esp_err_t bsp_display_release_and_deinit(const bsp_display_lease_t *lease)
+{
+    esp_err_t result = ESP_ERR_INVALID_ARG;
+    bool deinitialize = false;
+    if (lease == NULL || lease->id == 0U)
+    {
+        return result;
+    }
+    taskENTER_CRITICAL(&s_registry_lock);
+    if (s_init_state == BSP_INIT_STATE_UNINITIALIZED)
+    {
+        result = ESP_OK;
+        goto exit;
+    }
+    if (s_init_state == BSP_INIT_STATE_INITIALIZING ||
+            s_init_state == BSP_INIT_STATE_DEINITIALIZING)
+    {
+        result = ESP_ERR_INVALID_STATE;
+        goto exit;
+    }
+    if (s_display_lease.id != lease->id)
+    {
+        result = ESP_ERR_INVALID_ARG;
+        goto exit;
+    }
+    s_display_lease.id = 0U;
+    s_display_lease.owner = NULL;
+    s_init_state = BSP_INIT_STATE_DEINITIALIZING;
+    deinitialize = true;
+    result = ESP_OK;
+
+exit:
+    taskEXIT_CRITICAL(&s_registry_lock);
+    if (!deinitialize)
+    {
+        return result;
+    }
+    return _bsp_hal_commit_deinit();
+}
+
+bool bsp_display_is_leased(void)
+{
+    taskENTER_CRITICAL(&s_registry_lock);
+    bool leased = s_display_lease.id != 0U;
+    taskEXIT_CRITICAL(&s_registry_lock);
+    return leased;
 }
 
 esp_err_t bsp_hal_register_screen(const bsp_screen_ops_t *ops)

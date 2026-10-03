@@ -30,3 +30,8 @@ target_include_directories(${COMPONENT_LIB} SYSTEM PRIVATE
     "${XPOWERSLIB_ROOT}/src"
     "${XPOWERSLIB_ROOT}/src/REG"
 )
+
+if(MT_BOARD_CAPABILITY_DEFINES)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE
+        ${MT_BOARD_CAPABILITY_DEFINES})
+endif()
