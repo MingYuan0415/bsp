@@ -9,7 +9,6 @@
 #include "board_tca9554.h"
 
 #define DBG_TAG "board_tca9554"
-#define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
 #define BOARD_TCA9554_IO_COUNT          (8U)

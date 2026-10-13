@@ -9,7 +9,6 @@
 #include "driver/i2c_master.h"
 
 #define DBG_TAG "axp2101"
-#define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
 #define XPOWERS_LOG_E(...) LOG_E(__VA_ARGS__)

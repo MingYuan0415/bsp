@@ -19,7 +19,6 @@
 #include "board_init.h"
 
 #define DBG_TAG "board_display"
-#define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
 #define LCD_SPI_HOST                    (SPI2_HOST)

@@ -24,7 +24,6 @@
 #include "bsp_hal.h"
 
 #define DBG_TAG "board_input"
-#define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
 #define BOARD_INPUT_HOME_GPIO             (GPIO_NUM_0)

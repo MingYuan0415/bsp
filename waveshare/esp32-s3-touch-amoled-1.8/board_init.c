@@ -20,7 +20,6 @@
 #include "esp_timer.h"
 
 #define DBG_TAG "board"
-#define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
 #define BOARD_I2C_PORT                (I2C_NUM_0)

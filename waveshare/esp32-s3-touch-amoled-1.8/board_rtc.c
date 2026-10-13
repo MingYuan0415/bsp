@@ -8,7 +8,6 @@
 #include "mt_pcf85063.h"
 
 #define DBG_TAG "board_rtc"
-#define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
 static mt_pcf85063_t *s_rtc_device = NULL;

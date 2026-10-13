@@ -4,7 +4,6 @@
  */
 
 #define DBG_TAG "bsp_hal"
-#define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
 #include "bsp_hal.h"

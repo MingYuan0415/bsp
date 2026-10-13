@@ -13,7 +13,6 @@
 #include "board_audio_format.h"
 
 #define DBG_TAG "board_audio"
-#define DBG_LVL DBG_INFO
 #include "mt_log.h"
 
 #define BOARD_AUDIO_I2S_PORT (0)
