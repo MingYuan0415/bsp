@@ -3,6 +3,10 @@ project(bsp_host_tests LANGUAGES C CXX)
 
 enable_testing()
 
+set(BSP_SANITIZER "none" CACHE STRING
+    "Host-test sanitizer: none, address, or thread")
+set_property(CACHE BSP_SANITIZER PROPERTY STRINGS none address thread)
+
 add_executable(xpowers_behavior_test
     xpowers_behavior_test.cpp
     ../../waveshare/esp32-s3-touch-amoled-1.8/board_power.c
@@ -269,10 +273,32 @@ set(BSP_C_TEST_TARGETS
     board_sdspi_test
     board_audio_lifecycle_test)
 foreach(target IN LISTS BSP_C_TEST_TARGETS)
-    target_compile_options(${target} PRIVATE -Wpedantic)
+    target_compile_options(${target} PRIVATE -Wpedantic -UNDEBUG)
 endforeach()
 
-target_compile_options(xpowers_behavior_test PRIVATE -Wpedantic -Werror)
+target_compile_options(xpowers_behavior_test PRIVATE -Wpedantic -Werror -UNDEBUG)
 set_source_files_properties(
     ../../XPowersLib/src/XPowersLibInterface.cpp
     PROPERTIES COMPILE_OPTIONS "-Wno-error")
+
+# Every host test is short; the timeout keeps a wedged driver shim from
+# blocking the gate indefinitely.
+set(BSP_C_TEST_TARGETS xpowers_behavior_test ${BSP_C_TEST_TARGETS})
+foreach(target IN LISTS BSP_C_TEST_TARGETS)
+    set_tests_properties(${target} PROPERTIES TIMEOUT 30)
+    if(BSP_SANITIZER STREQUAL "address")
+        target_compile_options(${target} PRIVATE
+            -fsanitize=address,undefined -fno-omit-frame-pointer
+            -fno-sanitize-recover=all)
+        target_link_options(${target} PRIVATE
+            -fsanitize=address,undefined -fno-omit-frame-pointer
+            -fno-sanitize-recover=all)
+    elseif(BSP_SANITIZER STREQUAL "thread")
+        target_compile_options(${target} PRIVATE
+            -fsanitize=thread -fno-omit-frame-pointer)
+        target_link_options(${target} PRIVATE
+            -fsanitize=thread -fno-omit-frame-pointer)
+    elseif(NOT BSP_SANITIZER STREQUAL "none")
+        message(FATAL_ERROR "Unsupported BSP_SANITIZER=${BSP_SANITIZER}")
+    endif()
+endforeach()
