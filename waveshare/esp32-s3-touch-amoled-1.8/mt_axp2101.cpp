@@ -51,11 +51,11 @@ static int _mt_axp2101_register_read(uint8_t dev_addr, uint8_t reg_addr,
     else if (s_callback_device && s_callback_device->pmu_dev && data)
     {
         esp_err_t ret = i2c_master_transmit_receive(s_callback_device->pmu_dev,
-                        &reg_addr,
-                        sizeof(reg_addr),
-                        data,
-                        len,
-                        MT_AXP2101_I2C_TIMEOUT_MS);
+            &reg_addr,
+            sizeof(reg_addr),
+            data,
+            len,
+            MT_AXP2101_I2C_TIMEOUT_MS);
         if (ret != ESP_OK && s_callback_device->last_io_error == ESP_OK)
         {
             s_callback_device->last_io_error = ret;
@@ -754,7 +754,7 @@ esp_err_t mt_axp2101_apply_profile(mt_axp2101_t *device,
         }
     }
     result = _mt_axp2101_set_precharge_current(device,
-             profile->precharge_current_ma);
+        profile->precharge_current_ma);
     if (result != ESP_OK)
     {
         goto exit;
@@ -793,7 +793,7 @@ esp_err_t mt_axp2101_apply_profile(mt_axp2101_t *device,
         goto exit;
     }
     result = _mt_axp2101_set_irq_mask_unlocked(device,
-             profile->irq_enable_mask);
+        profile->irq_enable_mask);
 
 exit:
     xSemaphoreGive(device->lock);

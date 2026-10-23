@@ -801,7 +801,7 @@ esp_err_t bsp_audio_start(void)
 #endif
     s_audio.codec_close_required = true;
     result = _codec_error(esp_codec_dev_open(s_audio.codec_device,
-                          &sample_info));
+        &sample_info));
     if (result != ESP_OK)
     {
         const esp_err_t cleanup_result = _release_stream_resources_locked();
@@ -992,7 +992,7 @@ esp_err_t bsp_audio_set_volume(uint8_t percent)
     if (s_audio.started)
     {
         result = _codec_error(esp_codec_dev_set_out_vol(s_audio.codec_device,
-                              percent));
+            percent));
     }
 
 exit:
@@ -1039,7 +1039,7 @@ esp_err_t bsp_audio_set_mute(bool muted)
     if (s_audio.started)
     {
         result = _codec_error(esp_codec_dev_set_out_mute(s_audio.codec_device,
-                              muted));
+            muted));
     }
 
 exit:

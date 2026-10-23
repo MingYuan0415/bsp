@@ -195,7 +195,7 @@ static esp_err_t _board_imu_update_locked(board_imu_t *device,
 static esp_err_t _board_imu_reset_locked(board_imu_t *device)
 {
     esp_err_t result = _board_imu_write_locked(device, BOARD_IMU_RESET_REG,
-                       BOARD_IMU_RESET_VALUE);
+        BOARD_IMU_RESET_VALUE);
     if (result != ESP_OK)
     {
         return result;
@@ -217,9 +217,9 @@ static esp_err_t _board_imu_configure_locked(board_imu_t *device)
     const uint8_t accel_odr = _board_imu_accel_odr(device->config.sample_rate_hz);
     const uint8_t gyro_odr = _board_imu_gyro_odr(device->config.sample_rate_hz);
     esp_err_t result = _board_imu_write_locked(device, BOARD_IMU_CTRL1_REG,
-                       (uint8_t)(BOARD_IMU_CTRL1_AUTO_INC |
-                                 (device->config.enable_interrupt ?
-                                  BOARD_IMU_CTRL1_INT1_ENABLE : 0U)));
+        (uint8_t)(BOARD_IMU_CTRL1_AUTO_INC |
+                  (device->config.enable_interrupt ?
+                   BOARD_IMU_CTRL1_INT1_ENABLE : 0U)));
     if (result != ESP_OK)
     {
         return result;
@@ -445,7 +445,7 @@ esp_err_t board_imu_set_sample_rate(board_imu_t *device,
     uint8_t previous_accel = 0U;
     uint8_t previous_gyro = 0U;
     esp_err_t result = _board_imu_read_locked(device, BOARD_IMU_CTRL2_REG,
-                       &previous_accel, sizeof(previous_accel));
+        &previous_accel, sizeof(previous_accel));
     if (result == ESP_OK)
     {
         result = _board_imu_read_locked(device, BOARD_IMU_CTRL3_REG,
@@ -520,7 +520,7 @@ esp_err_t board_imu_read(board_imu_t *device, board_imu_sample_t *sample)
     uint8_t values[14] = {0};
     xSemaphoreTake(device->lock, portMAX_DELAY);
     esp_err_t result = _board_imu_read_locked(device, BOARD_IMU_STATUS_INT_REG,
-                       status, sizeof(status));
+        status, sizeof(status));
     if (result == ESP_OK)
     {
         result = _board_imu_read_locked(device, BOARD_IMU_TIMESTAMP_REG,
@@ -548,7 +548,7 @@ esp_err_t board_imu_read(board_imu_t *device, board_imu_sample_t *sample)
                                ((uint32_t)timestamp[2] << 16);
 
     const int16_t temperature_raw = (int16_t)((uint16_t)values[1] << 8 |
-                                    values[0]);
+        values[0]);
     sample->temperature_c = (float)temperature_raw / 256.0F;
     for (unsigned axis = 0; axis < 3U; ++axis)
     {
@@ -600,7 +600,7 @@ esp_err_t board_imu_get_interrupt_level(board_imu_t *device, bool *active)
 
     uint32_t levels = 0;
     esp_err_t result = esp_io_expander_get_level(device->io_expander,
-                       BOARD_IMU_INT1_PIN, &levels);
+        BOARD_IMU_INT1_PIN, &levels);
     if (result == ESP_OK)
     {
         *active = (levels & BOARD_IMU_INT1_PIN) != 0U;
