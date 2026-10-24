@@ -6,6 +6,9 @@
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "esp_err.h"
+
+typedef int sdspi_dev_handle_t;
 
 typedef struct sdmmc_host
 {
@@ -37,5 +40,10 @@ typedef struct sdspi_device_config
     { .host_id = SPI2_HOST, .gpio_cs = 13, .gpio_cd = GPIO_NUM_NC, \
       .gpio_wp = GPIO_NUM_NC, .gpio_int = GPIO_NUM_NC, \
       .gpio_wp_polarity = false, .duty_cycle_pos = 0, .wait_for_miso = 0 }
+
+esp_err_t sdspi_host_init(void);
+esp_err_t sdspi_host_init_device(const sdspi_device_config_t *config,
+                                 sdspi_dev_handle_t *handle);
+esp_err_t sdspi_host_remove_device(sdspi_dev_handle_t handle);
 
 #endif /* __SDSPI_FAKE_HOST_H__ */

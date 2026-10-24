@@ -59,10 +59,16 @@ DMA 已观察到顶部蓝线和 GUI 冻结，因此不再保留生产或实验�
 AXP2101 默认 profile 与原理图一致：DCDC1/2/3/4 为 3.3/0.9/1.2/1.8 V，DCDC5 关闭；ALDO1/2/3/4 为 3.3/3.3/3.0/1.8 V；BLDO1/2 为 1.2/2.8 V；CPUSLDO 为 1.2 V；DLDO1/2 关闭。充电参数为预充 50 mA、恒流 200 mA、终止 25 mA、目标 4.1 V，并启用电池检测、Gauge、主电池充电以及电池/VBUS/电源键/充电状态 IRQ。
 
 SD 的 `/sdcard`、最多 5 个文件和 16 KiB allocation unit 由根运行时产品配置传入。
-普通 init/start 永不请求格式化；只有上层显式调用
-`sd_storage_service_recover_and_mount()` 时 BSP mount adapter 才收到格式化恢复模式。
-挂载或卸载的 SPI bus/GPIO wrapper 清理失败时保留 partial handle，后续
-`board_sdspi_unmount()` 可重试回滚。
+普通 init/start 永不请求格式化；只有上层显式且代际匹配的恢复操作才允许在
+`FR_NO_FILESYSTEM` / `FR_INT_ERR` 后重建分区并格式化。健康挂载上的恢复不擦除文件。
+BSP 自己持有 card、SDSPI device、diskio、FatFs、VFS、SPI bus 与虚拟 CS 的
+所有权，不调用 SDK 的 sdcard mount/unmount/format 组合 helper。主动格式化使用
+`f_mount(NULL)` → `f_mkfs()` → `f_mount()` → 容量复核；恢复重建另先调用 `f_fdisk()`。
+只有重新挂载成功且容量可读、非零才报告格式化成功。失败立即清除 mounted；
+所有失败阶段均保留实际资源标记，`board_sdspi_unmount()` 从未完成阶段重试，
+不重复释放已完成阶段。先移除 raw VFS route，失败时仍保留完整 FATFS context；
+再销毁 SDK FATFS context（其内部重复 unregister 的 INVALID_STATE 表示 route
+已移除），防止 VFS callback 保留悬空指针或重复释放。
 
 ## HAL 使用约束
 

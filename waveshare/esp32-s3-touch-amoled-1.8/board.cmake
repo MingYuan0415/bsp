@@ -41,6 +41,7 @@ set(MT_BOARD_PRIVATE_REQUIRES
     freertos
     esp_timer
     fatfs
+    vfs
     sdmmc
     esp_codec_dev
 )

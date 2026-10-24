@@ -612,7 +612,8 @@ esp_err_t bsp_hal_register_sd(const bsp_sd_ops_t *ops)
     bool lock_owned = false;
     if (ops == NULL || ops->is_available == NULL || ops->mount == NULL ||
             ops->unmount == NULL || ops->is_mounted == NULL ||
-            ops->get_mount_point == NULL)
+            ops->get_mount_point == NULL || ops->format == NULL ||
+            ops->get_space == NULL)
     {
         return result;
     }

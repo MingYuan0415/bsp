@@ -284,6 +284,23 @@ typedef struct bsp_sd_ops
     esp_err_t (*unmount)(void); /**< Unmount the card. */
     bool (*is_mounted)(void); /**< Report current mount state. */
     const char *(*get_mount_point)(void); /**< Return the active mount path. */
+    /**
+     * @brief Erase the mounted card and mount it again.
+     *
+     * Destructive. Returns ESP_OK only after the reformatted filesystem is
+     * mounted again and its capacity is readable, so a caller never treats a
+     * half-completed format as success.
+     */
+    esp_err_t (*format)(const bsp_sd_config_t *config);
+    /**
+     * @brief Read total and free bytes of the mounted filesystem.
+     *
+     * @param total_bytes receives the filesystem capacity.
+     * @param free_bytes receives the currently available bytes.
+     *
+     * @return ESP_OK on success; ESP_ERR_INVALID_STATE while unmounted.
+     */
+    esp_err_t (*get_space)(uint64_t *total_bytes, uint64_t *free_bytes);
 } bsp_sd_ops_t;
 
 /** @brief Board input registration and sleep-handshake operations. */

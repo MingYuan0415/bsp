@@ -62,11 +62,33 @@ esp_err_t board_sdspi_unmount(board_sdspi_t *device);
 /** @brief Return whether the instance currently owns a mounted card. */
 bool board_sdspi_is_mounted(const board_sdspi_t *device);
 
-/** @brief Return the card descriptor owned by a mounted instance. */
-sdmmc_card_t *board_sdspi_get_card(board_sdspi_t *device);
-
 /** @brief Return the configured VFS path, or NULL for an invalid instance. */
 const char *board_sdspi_get_mount_path(const board_sdspi_t *device);
+
+/**
+ * @brief Erase the mounted card and mount the filesystem again.
+ *
+ * @param device owns a mounted card.
+ *
+ * @return ESP_OK only when the card is formatted, remounted, and capacity is
+ *         readable and nonzero. On failure the instance is unusable but still
+ *         owns all unreleased resources; board_sdspi_unmount() retries cleanup
+ *         stage by stage without repeating successful releases.
+ */
+esp_err_t board_sdspi_format(board_sdspi_t *device);
+
+/**
+ * @brief Read total and free capacity of the mounted filesystem.
+ *
+ * @param device owns a mounted card.
+ * @param total_bytes receives the filesystem capacity.
+ * @param free_bytes receives the currently available bytes.
+ *
+ * @return ESP_OK on success; ESP_ERR_INVALID_STATE while unmounted;
+ *         otherwise the query error, so a failed query never reports zero.
+ */
+esp_err_t board_sdspi_get_space(const board_sdspi_t *device,
+                                uint64_t *total_bytes, uint64_t *free_bytes);
 
 #ifdef __cplusplus
 }

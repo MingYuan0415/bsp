@@ -275,6 +275,27 @@ static const char *_sd_get_mount_point(void)
     return board_sdspi_get_mount_path(s_board.sd_card);
 }
 
+static esp_err_t _sd_format(const bsp_sd_config_t *config)
+{
+    if (s_board.sd_card == NULL)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (config == NULL || config->mount_point == NULL ||
+            strlen(config->mount_point) >=
+            sizeof(((board_sdspi_config_t *)0)->mount_path) ||
+            strcmp(config->mount_point, _sd_get_mount_point()) != 0)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return board_sdspi_format(s_board.sd_card);
+}
+
+static esp_err_t _sd_get_space(uint64_t *total_bytes, uint64_t *free_bytes)
+{
+    return board_sdspi_get_space(s_board.sd_card, total_bytes, free_bytes);
+}
+
 static const bsp_sd_ops_t s_sd_ops =
 {
     .is_available = _sd_is_available,
@@ -282,6 +303,8 @@ static const bsp_sd_ops_t s_sd_ops =
     .unmount = _sd_unmount,
     .is_mounted = _sd_is_mounted,
     .get_mount_point = _sd_get_mount_point,
+    .format = _sd_format,
+    .get_space = _sd_get_space,
 };
 
 static esp_err_t _board_i2c_init(board_context_t *board)
