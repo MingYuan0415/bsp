@@ -57,6 +57,7 @@ typedef struct board_audio_fake_state
     bool i2s_enabled[BOARD_AUDIO_FAKE_CHANNEL_COUNT];
     uint8_t codec_ctrl_address;
     uint16_t codec_mclk_multiple;
+    int pa_pin;
     float codec_pa_voltage;
     float codec_dac_voltage;
     float codec_pa_gain_db;

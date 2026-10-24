@@ -124,6 +124,10 @@ static void _test_format_and_lifecycle(void)
     assert(fake->i2s_auto_clear_after_cb);
     assert(fake->codec_ctrl_address == ES8311_CODEC_DEFAULT_ADDR);
     assert(fake->codec_mclk_multiple == 384U);
+    /* The BSP owns the PA pin outright. Passing it to the codec too gave the
+     * pin two owners that reconfigured it at different times, logging a GPIO
+     * conflict and making amplifier state depend on codec enable order. */
+    assert(fake->pa_pin == -1);
     assert(fake->codec_pa_voltage == 3.3F);
     assert(fake->codec_dac_voltage == 3.3F);
     assert(fake->codec_pa_gain_db == 6.02F);

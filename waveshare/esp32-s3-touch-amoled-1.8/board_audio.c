@@ -366,7 +366,12 @@ static esp_err_t _create_codec_locked(void)
         .ctrl_if = s_audio.ctrl_if,
         .gpio_if = s_audio.gpio_if,
         .codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH,
-        .pa_pin = BOARD_AUDIO_PA_GPIO,
+        /* The BSP owns the PA pin. Handing the same pin to the codec as well
+         * made two owners call gpio_config()/gpio_set_level() on it: the board
+         * configured it at audio init, then es8311's ES_PA_SETUP reconfigured
+         * it mid-stream, which logged "conflict found for GPIO[46]" and left
+         * the amplifier state dependent on codec enable order. */
+        .pa_pin = -1,
         .pa_reverted = BOARD_AUDIO_CODEC_PA_REVERTED,
         .master_mode = false,
         .use_mclk = true,

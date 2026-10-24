@@ -50,7 +50,7 @@ DMA 已观察到顶部蓝线和 GUI 冻结，因此不再保留生产或实验�
 | 功能 | 当前接线与行为 | HAL/API |
 | --- | --- | --- |
 | QMI8658C | I2C 地址 `0x6b`；EXIO6 为 INT1，任务上下文轮询；默认请求 100 Hz、+/-4 g、+/-64 dps | `BSP_CAPABILITY_IMU`、`bsp_hal_get_imu()`；`configure`、`read`、`set_enabled`、`get_interrupt_level` |
-| ES8311/NS4150B | ES8311 通过共享 I2C 配置，I2S 全双工传输；NS4150B 由 3.3 V 供电，150 kOhm 输入电阻对应 6.02 dB 增益，GPIO46 控制 PA | `BSP_CAPABILITY_AUDIO`、`bsp_hal_get_audio()` 和 `bsp_audio_*`；支持配置、start/stop、read/write、音量、静音和 PA |
+| ES8311/NS4150B | ES8311 通过共享 I2C 配置，I2S 全双工传输；NS4150B 由 3.3 V 供电，150 kOhm 输入电阻对应 6.02 dB 增益，GPIO46 控制 PA。PA 引脚只由 BSP 持有：ES8311 配置的 `pa_pin` 为 -1，否则 codec 会在 `ES_PA_SETUP` 时重新 `gpio_config()` 同一引脚 | `BSP_CAPABILITY_AUDIO`、`bsp_hal_get_audio()` 和 `bsp_audio_*`；支持配置、start/stop、read/write、音量、静音和 PA |
 | SD | SDSPI 使用 SPI3，MOSI/MISO/CLK 为 GPIO1/3/2，EXIO7 经 GPIO wrapper 作为低有效 CS，默认 20 MHz | `BSP_CAPABILITY_SD`、`bsp_hal_get_sd()`；mount/unmount 和挂载状态查询 |
 | AXP2101 | EXIO5 为低有效 IRQ；轮询时读取并清除 latched status | `BSP_CAPABILITY_POWER`、`bsp_hal_get_power()`；`get_info` 和 `poll_irq` |
 | PCF85063 | EXIO3 为低有效 RTC_INT；支持重复日历 alarm、pending 查询和清除 | `BSP_CAPABILITY_RTC`、`bsp_hal_get_rtc()`；`alarm_configure/disable/get_status/clear/poll_interrupt` |

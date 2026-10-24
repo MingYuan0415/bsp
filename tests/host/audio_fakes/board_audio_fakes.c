@@ -279,6 +279,7 @@ const audio_codec_if_t *es8311_codec_new(es8311_codec_cfg_t *config)
            config->gpio_if != NULL);
     ++s_state.codec_create_calls;
     s_state.codec_mclk_multiple = config->mclk_div;
+    s_state.pa_pin = config->pa_pin;
     s_state.codec_pa_voltage = config->hw_gain.pa_voltage;
     s_state.codec_dac_voltage = config->hw_gain.codec_dac_voltage;
     s_state.codec_pa_gain_db = config->hw_gain.pa_gain;
