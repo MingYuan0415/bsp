@@ -1,25 +1,40 @@
+**English** | [简体中文](README_ZH.md)
+
 # MicroTech BSP
 
-本仓库是 MicroTech 的 ESP-IDF 板级支持组件，目前仅支持 **Waveshare ESP32-S3-Touch-AMOLED-1.8**。它为 368 x 448 SH8601 QSPI AMOLED、FT5x06 触摸、HOME/POWER 按键、TCA9554 扩展器、PCF85063 RTC、AXP2101 PMU、QMI8658C IMU、ES8311/NS4150B 音频和可移除 SD 存储提供统一 HAL。
+This repository is the ESP-IDF board support component for MicroTech and
+currently supports only **Waveshare ESP32-S3-Touch-AMOLED-1.8**. It provides a
+unified HAL for the 368 x 448 SH8601 QSPI AMOLED, FT5x06 touch, HOME/POWER
+buttons, TCA9554 expander, PCF85063 RTC, AXP2101 PMU, QMI8658C IMU,
+ES8311/NS4150B audio and removable SD storage.
 
-## 目录结构
+## Directory Layout
 
-- `include/bsp_hal.h`：公共 HAL，定义生命周期、能力位、显示端口及 screen/input/RTC/power/IMU/audio/SD 操作表。
-- `include/bsp_audio.h`：ES8311/NS4150B 音频路径的板级控制 API。
-- `src/`：与具体开发板解耦的事务式 HAL 注册表。
-- `waveshare/esp32-s3-touch-amoled-1.8/`：板级引脚、驱动封装和资源初始化/回滚实现。
-- `tests/host/`：不依赖真机的显示、PMU、RTC、IMU、音频和 SDSPI 聚焦测试。
-- `XPowersLib/src/`：固定版本的第三方 PMU 库快照。
+- `include/bsp_hal.h`: public HAL defining the lifecycle, capability bits,
+  display port and the screen/input/RTC/power/IMU/audio/SD operation tables.
+- `include/bsp_audio.h`: board-level control API for the ES8311/NS4150B audio
+  path.
+- `src/`: board-agnostic transactional HAL registry.
+- `waveshare/esp32-s3-touch-amoled-1.8/`: board pins, driver wrappers and
+  resource init/rollback implementation.
+- `tests/host/`: display, PMU, RTC, IMU, audio and SDSPI focused tests that
+  need no hardware.
+- `XPowersLib/src/`: pinned snapshot of the third-party PMU library.
 
-## 集成与配置
+## Integration and Configuration
 
-组件要求 ESP-IDF 5.0 及以上。在调用工程中将本目录加入 `EXTRA_COMPONENT_DIRS`；本项目使用：
+The component requires ESP-IDF 5.0 or later. Add this directory to
+`EXTRA_COMPONENT_DIRS` in the consuming project; this project uses:
 
 ```cmake
 set(EXTRA_COMPONENT_DIRS layers/bsp)
 ```
 
-`idf_component.yml` 会解析 `esp_io_expander`、`esp_lcd_sh8601`、`esp_lcd_touch_ft5x06` 和 `esp_codec_dev`，调用工程还须提供本地 `mt_log` 组件。所选板型会启用 `IO_EXPANDER_ENABLE_GPIO_API_WRAPPER`，供 SDSPI 将 EXIO7 映射为虚拟 CS GPIO。配置并构建：
+`idf_component.yml` resolves `esp_io_expander`, `esp_lcd_sh8601`,
+`esp_lcd_touch_ft5x06` and `esp_codec_dev`, and the consuming project must also
+provide the local `mt_log` component. The selected board enables
+`IO_EXPANDER_ENABLE_GPIO_API_WRAPPER` so SDSPI can map EXIO7 to a virtual CS
+GPIO. Configure and build:
 
 ```sh
 idf.py set-target esp32s3
@@ -27,66 +42,108 @@ idf.py menuconfig  # MicroTech Project Config -> Development Board
 idf.py build
 ```
 
-当前唯一板型为默认项，且仅在 `IDF_TARGET_ESP32S3` 下可选。
+The only current board type is the default entry and is selectable only under
+`IDF_TARGET_ESP32S3`.
 
-音频接线和校准属于板级事实：固定使用 I2S0、GPIO16/9/45/8/10、PA GPIO46 和
-30 dB 麦克风增益。PCM 格式、音量、mute 和目标 PA 状态由上层运行时产品配置传入。
-`board_audio_init()` 完成后 PA 保持关闭；未先调用 `bsp_audio_configure()` 时
-`bsp_audio_start()` 返回 `ESP_ERR_INVALID_STATE`。
+Audio wiring and calibration are board-level facts: fixed I2S0,
+GPIO16/9/45/8/10, PA GPIO46 and 30 dB microphone gain. The PCM format, volume,
+mute and target PA state are passed in by the upper-layer runtime product
+configuration. After `board_audio_init()` completes the PA stays off;
+`bsp_audio_start()` returns `ESP_ERR_INVALID_STATE` when
+`bsp_audio_configure()` has not been called first.
 
-显示传输配置属于板级 profile，不通过 Kconfig 覆盖。当前 Waveshare 后端固定为
-368 x 448 RGB565、40 MHz QSPI、10 行逻辑传输、44 行物理 DMA 上限、queue depth 2，
-并关闭 PSRAM Direct DMA 和 TE 同步。40 MHz 是项目经验值，并非 SH8601A preliminary
-Table 14 保证的频率；既有 80 MHz 对照收益不足。ESP-IDF 6.1 下启用非 TE Direct
-DMA 已观察到顶部蓝线和 GUI 冻结，因此不再保留生产或实验配置入口。
+Display transport configuration is a board-level profile and is not overridden
+through Kconfig. The current Waveshare backend is fixed at 368 x 448 RGB565,
+40 MHz QSPI, a 10-line logical transfer, a 44-line physical DMA limit and queue
+depth 2, with PSRAM Direct DMA and TE sync disabled. 40 MHz is an empirical
+project value, not a rate guaranteed by SH8601A preliminary Table 14; the
+existing 80 MHz comparison showed insufficient benefit. Under ESP-IDF 6.1,
+enabling non-TE Direct DMA has been observed to cause a blue line at the top and
+GUI freeze, so no production or experimental entry point is kept.
 
-新增板型必须提供独立的私有 display profile 和 HAL backend，并以对应 `IDF_TARGET`
-限制板型选项。组件依赖只能按 target 或 manifest rule 选择，不能通过
-`CONFIG_BOARD_TYPE_*` 改变 `REQUIRES`/`PRIV_REQUIRES`。未注册 target 必须停止配置，
-不得回退到本板后端。
+A new board type must provide its own private display profile and HAL backend,
+and restrict the board option with the corresponding `IDF_TARGET`. Component
+dependencies may only be selected per target or by manifest rule;
+`REQUIRES`/`PRIV_REQUIRES` must not be changed through `CONFIG_BOARD_TYPE_*`. An
+unregistered target must stop configuration and must not fall back to this
+board's backend.
 
-## 硬件适配
+## Hardware Adaptation
 
-| 功能 | 当前接线与行为 | HAL/API |
+| Function | Current wiring and behavior | HAL/API |
 | --- | --- | --- |
-| QMI8658C | I2C 地址 `0x6b`；EXIO6 为 INT1，任务上下文轮询；默认请求 100 Hz、+/-4 g、+/-64 dps | `BSP_CAPABILITY_IMU`、`bsp_hal_get_imu()`；`configure`、`read`、`set_enabled`、`get_interrupt_level` |
-| ES8311/NS4150B | ES8311 通过共享 I2C 配置，I2S 全双工传输；NS4150B 由 3.3 V 供电，150 kOhm 输入电阻对应 6.02 dB 增益，GPIO46 控制 PA。PA 引脚只由 BSP 持有：ES8311 配置的 `pa_pin` 为 -1，否则 codec 会在 `ES_PA_SETUP` 时重新 `gpio_config()` 同一引脚 | `BSP_CAPABILITY_AUDIO`、`bsp_hal_get_audio()` 和 `bsp_audio_*`；支持配置、start/stop、read/write、音量、静音和 PA |
-| SD | SDSPI 使用 SPI3，MOSI/MISO/CLK 为 GPIO1/3/2，EXIO7 经 GPIO wrapper 作为低有效 CS，默认 20 MHz | `BSP_CAPABILITY_SD`、`bsp_hal_get_sd()`；mount/unmount 和挂载状态查询 |
-| AXP2101 | EXIO5 为低有效 IRQ；轮询时读取并清除 latched status | `BSP_CAPABILITY_POWER`、`bsp_hal_get_power()`；`get_info` 和 `poll_irq` |
-| PCF85063 | EXIO3 为低有效 RTC_INT；支持重复日历 alarm、pending 查询和清除 | `BSP_CAPABILITY_RTC`、`bsp_hal_get_rtc()`；`alarm_configure/disable/get_status/clear/poll_interrupt` |
-| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿，板级 profile 固定关闭。App Manager 使用两块 60 行 PSRAM 绘制条带（共 88,320 B），BSP 将单次 SPI DMA 分块限制为 10 行，并以深度 2 队列将内部 DMA bounce 峰值限制为 14,720 B；非 TE 不启用 PSRAM 直 DMA | `bsp_display_port_t.transport` 导出 QSPI、40 MHz、4 data lines、16 bpp、传输和 DMA 行数；`te` 仅导出同步状态、GPIO 与边沿 |
+| QMI8658C | I2C address `0x6b`; EXIO6 is INT1, polled in task context; requests 100 Hz, +/-4 g, +/-64 dps by default | `BSP_CAPABILITY_IMU`, `bsp_hal_get_imu()`; `configure`, `read`, `set_enabled`, `get_interrupt_level` |
+| ES8311/NS4150B | ES8311 is configured over the shared I2C and the I2S link is full-duplex; NS4150B is powered from 3.3 V, the 150 kOhm input resistor corresponds to 6.02 dB gain, and GPIO46 controls the PA. The PA pin is owned only by the BSP: the ES8311 configuration uses `pa_pin` of -1, otherwise the codec would re-run `gpio_config()` on the same pin during `ES_PA_SETUP` | `BSP_CAPABILITY_AUDIO`, `bsp_hal_get_audio()` and `bsp_audio_*`; supports configuration, start/stop, read/write, volume, mute and PA |
+| SD | SDSPI uses SPI3, MOSI/MISO/CLK are GPIO1/3/2, EXIO7 acts as the active-low CS through the GPIO wrapper, default 20 MHz | `BSP_CAPABILITY_SD`, `bsp_hal_get_sd()`; mount/unmount and mount-state query |
+| AXP2101 | EXIO5 is the active-low IRQ; polling reads and clears the latched status | `BSP_CAPABILITY_POWER`, `bsp_hal_get_power()`; `get_info` and `poll_irq` |
+| PCF85063 | EXIO3 is the active-low RTC_INT; supports repeating calendar alarms, pending query and clear | `BSP_CAPABILITY_RTC`, `bsp_hal_get_rtc()`; `alarm_configure/disable/get_status/clear/poll_interrupt` |
+| AMOLED TE | The panel TE is wired to GPIO13, but no valid edges have been detected on hardware so far, so the board profile keeps it disabled. With TE off the BSP limits a single SPI DMA chunk to 10 lines (7,360 B) and the transfer queue to depth 2, which caps the internal DMA bounce buffer at 14,720 B; PSRAM direct DMA is not enabled without TE. Draw-buffer sizing and the render strip policy belong to the display adapter consumer | `bsp_display_port_t.transport` exports QSPI, 40 MHz, 4 data lines, 16 bpp, transfer and DMA line counts; `te` exports only the sync state, GPIO and edge |
 
-AXP2101 默认 profile 与原理图一致：DCDC1/2/3/4 为 3.3/0.9/1.2/1.8 V，DCDC5 关闭；ALDO1/2/3/4 为 3.3/3.3/3.0/1.8 V；BLDO1/2 为 1.2/2.8 V；CPUSLDO 为 1.2 V；DLDO1/2 关闭。充电参数为预充 50 mA、恒流 200 mA、终止 25 mA、目标 4.1 V，并启用电池检测、Gauge、主电池充电以及电池/VBUS/电源键/充电状态 IRQ。
+The default AXP2101 profile matches the schematic: DCDC1/2/3/4 at
+3.3/0.9/1.2/1.8 V with DCDC5 off; ALDO1/2/3/4 at 3.3/3.3/3.0/1.8 V; BLDO1/2 at
+1.2/2.8 V; CPUSLDO at 1.2 V; DLDO1/2 off. Charge parameters are 50 mA
+precharge, 200 mA constant current, 25 mA termination and a 4.1 V target, with
+battery detection, Gauge, main-battery charging and battery/VBUS/power-key/
+charge-status IRQs enabled.
 
-SD 的 `/sdcard`、最多 5 个文件和 16 KiB allocation unit 由根运行时产品配置传入。
-普通 init/start 永不请求格式化；只有上层显式且代际匹配的恢复操作才允许在
-`FR_NO_FILESYSTEM` / `FR_INT_ERR` 后重建分区并格式化。健康挂载上的恢复不擦除文件。
-BSP 自己持有 card、SDSPI device、diskio、FatFs、VFS、SPI bus 与虚拟 CS 的
-所有权，不调用 SDK 的 sdcard mount/unmount/format 组合 helper。主动格式化使用
-`f_mount(NULL)` → `f_mkfs()` → `f_mount()` → 容量复核；恢复重建另先调用 `f_fdisk()`。
-只有重新挂载成功且容量可读、非零才报告格式化成功。失败立即清除 mounted；
-所有失败阶段均保留实际资源标记，`board_sdspi_unmount()` 从未完成阶段重试，
-不重复释放已完成阶段。先移除 raw VFS route，失败时仍保留完整 FATFS context；
-再销毁 SDK FATFS context（其内部重复 unregister 的 INVALID_STATE 表示 route
-已移除），防止 VFS callback 保留悬空指针或重复释放。
+SD `/sdcard`, at most 5 files and a 16 KiB allocation unit are passed in by the
+root runtime product configuration. Normal init/start never requests a format;
+only an explicit, generation-matched recovery initiated by the upper layer may
+rebuild the partition and format after `FR_NO_FILESYSTEM` / `FR_INT_ERR`.
+Recovery on a healthy mount does not erase files. The BSP owns the card, SDSPI
+device, diskio, FatFs, VFS, SPI bus and virtual CS itself and does not call the
+SDK's combined sdcard mount/unmount/format helpers. Active formatting uses
+`f_mount(NULL)` → `f_mkfs()` → `f_mount()` → capacity re-check; a recovery
+rebuild additionally calls `f_fdisk()` first. Formatting is reported successful
+only when the remount succeeds and the capacity is readable and non-zero.
+Failure clears mounted immediately; every failure stage retains the actual
+resource markers, and `board_sdspi_unmount()` retries from the incomplete stage
+without releasing completed stages twice. The raw VFS route is removed first,
+and on failure the full FATFS context is retained; the SDK FATFS context is then
+destroyed (its internal duplicate unregister returning INVALID_STATE means the
+route is already removed), preventing the VFS callback from retaining a
+dangling pointer or double-freeing.
 
-## HAL 使用约束
+## HAL Usage Constraints
 
-先调用 `bsp_init()`，再通过 `bsp_get_capabilities()` 判断能力。显示、触摸和输入是初始化成功的必需能力；RTC、PMU、IMU 和音频初始化失败时不会阻止 BSP 就绪，SD 能力表示接线和 expander 可用，消费者仍须处理无卡或挂载失败。使用可选功能前应检查对应能力位和 `is_available()`，完成所有消费者停机后再调用 `bsp_deinit()`。
+Call `bsp_init()` first, then query capabilities through
+`bsp_get_capabilities()`. Display, touch and input are required for successful
+initialization; a failed RTC, PMU, IMU or audio initialization does not prevent
+the BSP from becoming ready, and the SD capability means the wiring and
+expander are available, so consumers must still handle a missing card or a
+failed mount. Check the matching capability bit and `is_available()` before
+using optional features, and call `bsp_deinit()` only after every consumer has
+stopped.
 
-`bsp_display_get_port()` 和 `bsp_hal_get_*()` 返回借用对象；显示端口由 BSP 生命周期所有者
-（`app_runtime`）通过 `bsp_display_acquire()` 独占持有（同一时刻仅一个持有者），其余组件在该租约下消费端口，
-不得自行获取。停机时用 `bsp_display_release_and_deinit()` 原子地释放租约并关闭 BSP，避免释放与
-`bsp_deinit()` 之间被新获取插入；若仍有消费者持有租约，`bsp_deinit()` 返回 `ESP_ERR_INVALID_STATE`
-并记录持有者名称。其余操作表不提供生命周期租约：初始化未完成、反初始化开始后或反初始化完成后不得保留或使用。
+`bsp_display_get_port()` and `bsp_hal_get_*()` return borrowed objects; the
+display port is held exclusively by the BSP lifecycle owner (`app_runtime`)
+through `bsp_display_acquire()` (only one holder at a time), and other
+components consume the port under that lease and must not acquire it
+themselves. On shutdown, use `bsp_display_release_and_deinit()` to release the
+lease and shut down the BSP atomically, so no new acquisition can be inserted
+between the release and `bsp_deinit()`; if any consumer still holds the lease,
+`bsp_deinit()` returns `ESP_ERR_INVALID_STATE` and logs the holder name. The
+other operation tables offer no lifecycle lease: they must not be retained or
+used before initialization completes, after deinit begins, or after deinit
+completes.
 
-screen 操作只实现板级阶段，不负责同步上层消费者。调用 `suspend()` 前必须停止触摸/显示消费者、暂停渲染 worker，并通过 panel IO 栅栏排空 SPI/DMA。恢复时先调用 `resume_prepare()`，再恢复渲染、强制完整刷新并完成栅栏，最后调用 `resume_commit()` 显示面板和恢复触摸。输入任务休眠按 `prepare_sleep -> complete_sleep` 配对。
+The screen operations implement only the board-level phase and do not
+synchronize upper-layer consumers. Before calling `suspend()`, stop the
+touch/display consumers, pause the render worker, and drain SPI/DMA through the
+panel IO fence. On resume, call `resume_prepare()` first, then resume rendering,
+force a full refresh and complete the fence, and finally call `resume_commit()`
+to show the panel and restore touch. Input task sleep is paired as
+`prepare_sleep -> complete_sleep`.
 
-EXIO3/5/6 没有直接连接 ESP32 GPIO，只能通过 TCA9554 在任务上下文轮询，不能注册为 RTC GPIO 唤醒源。触摸唤醒尚未实现，GPIO21 不在 wake descriptor 中；当前轻睡眠唤醒源只有 HOME 键 GPIO0，低电平有效。
+EXIO3/5/6 are not wired directly to ESP32 GPIOs and can only be polled through
+the TCA9554 in task context; they cannot be registered as RTC GPIO wake
+sources. Touch wake is not implemented and GPIO21 is not in the wake
+descriptor; the only light-sleep wake source today is the HOME button on GPIO0,
+active low.
 
-## 宿主测试
+## Host Tests
 
-从工程根目录运行 BSP 套件：
+Run the BSP suite from the project root:
 
 ```sh
 cmake -S layers/bsp/tests/host -B /tmp/bsp-host -G Ninja
@@ -94,19 +151,25 @@ cmake --build /tmp/bsp-host
 ctest --test-dir /tmp/bsp-host --output-on-failure
 ```
 
-该套件覆盖固定显示 transport profile、显示状态/休眠、AXP2101 callback 与默认
-profile、QMI8658C 转换和 EXIO6 轮询、PCF85063 alarm 与 EXIO3、ES8311
-格式/生命周期，以及 SDSPI 虚拟 CS 和失败清理重试。App Manager adapter 测试还会
-校验 TE-off partial 路径和 transport descriptor 映射：
+The suite covers the fixed display transport profile, display state/sleep, the
+AXP2101 callback and default profile, QMI8658C conversion and EXIO6 polling,
+PCF85063 alarms and EXIO3, ES8311 format/lifecycle, and SDSPI virtual CS with
+failure-cleanup retry. Its own tests do not exercise the display adapter of a
+consuming component; that adapter's suite is responsible for the TE-off partial
+path and the transport descriptor mapping it consumes.
 
-```sh
-cmake -S layers/app_manager/app_core/tests/host -B /tmp/app-manager-host -G Ninja
-cmake --build /tmp/app-manager-host
-ctest --test-dir /tmp/app-manager-host --output-on-failure
-```
+Host tests do not replace hardware verification. Display requires checking the
+GPIO13 TE pulse, full-screen/partial refresh and repeated screen-off/wake; IMU
+requires checking rest values, axes, ODR and INT1; audio requires checking
+record/playback, sample format, volume/mute and PA; SD requires checking card
+insertion, read/write, unmount and failure retry; RTC/PMU/low power requires
+checking alarm/IRQ clearing, battery/VBUS telemetry, charge parameters and
+GPIO0 active-low wake.
 
-宿主测试不替代硬件验证。显示需检查 GPIO13 TE 脉冲、全屏/局部刷新和重复熄屏/唤醒；IMU 需检查静止值、轴向、ODR 与 INT1；音频需检查录放、采样格式、音量/静音和 PA；SD 需检查插卡、读写、卸载和失败重试；RTC/PMU/低功耗需检查 alarm/IRQ 清除、电池/VBUS 遥测、充电参数及 GPIO0 低电平唤醒。
+## Third-Party Code
 
-## 第三方代码
-
-不要直接修改 `XPowersLib/src/`、ESP-IDF 或 managed components；优先升级依赖，板级修正放在本仓库 wrapper 中。XPowersLib 的版本、上游提交和许可边界见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。本仓库采用 MIT 许可证。
+Do not modify `XPowersLib/src/`, ESP-IDF or managed components directly;
+prefer upgrading the dependency and keep board-level corrections in this
+repository's wrappers. The XPowersLib version, upstream commit and license
+boundary are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). This
+repository is MIT licensed.
