@@ -32,7 +32,10 @@ idf.py build
 当前唯一板型为默认项，且仅在 `IDF_TARGET_ESP32S3` 下可选。
 
 音频接线和校准属于板级事实：固定使用 I2S0、GPIO16/9/45/8/10、PA GPIO46 和
-30 dB 麦克风增益。PCM 格式、音量、mute 和目标 PA 状态由上层运行时产品配置传入。
+36 dB 麦克风增益（ES8311 的 6 dB 步进档位）。30 dB 时实测语音峰值约 -33 dBFS，
+明显低于同机合成播放；42 dB 虽能补足电平，但会把同样随该增益放大的模拟干扰
+一并抬高并吃掉起录瞬态的余量，故取 36 dB，其余电平由录音侧的数字增益补足。
+PCM 格式、音量、mute 和目标 PA 状态由上层运行时产品配置传入。
 `board_audio_init()` 完成后 PA 保持关闭；未先调用 `bsp_audio_configure()` 时
 `bsp_audio_start()` 返回 `ESP_ERR_INVALID_STATE`。
 

@@ -136,7 +136,7 @@ static void _test_format_and_lifecycle(void)
     assert(fake->opened_format.bits_per_sample == 24U);
     assert(fake->opened_format.mclk_multiple == 384U);
     assert(fake->codec_set_in_gain_calls == 1U);
-    assert(fake->codec_input_gain_db == 30.0F);
+    assert(fake->codec_input_gain_db == 36.0F);
     assert(bsp_audio_stop() == ESP_OK);
     _assert_stream_resources_released(fake);
     assert(bsp_audio_is_available());
@@ -249,7 +249,7 @@ static void _test_input_gain_failure_rolls_back(void)
     assert(bsp_audio_start() == ESP_OK);
     assert(bsp_audio_is_started());
     assert(fake->codec_set_in_gain_calls == 2U);
-    assert(fake->codec_input_gain_db == 30.0F);
+    assert(fake->codec_input_gain_db == 36.0F);
     assert(bsp_audio_stop() == ESP_OK);
     assert(board_audio_deinit() == ESP_OK);
 }

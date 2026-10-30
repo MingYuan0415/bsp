@@ -46,11 +46,15 @@ The only current board type is the default entry and is selectable only under
 `IDF_TARGET_ESP32S3`.
 
 Audio wiring and calibration are board-level facts: fixed I2S0,
-GPIO16/9/45/8/10, PA GPIO46 and 30 dB microphone gain. The PCM format, volume,
-mute and target PA state are passed in by the upper-layer runtime product
-configuration. After `board_audio_init()` completes the PA stays off;
-`bsp_audio_start()` returns `ESP_ERR_INVALID_STATE` when
-`bsp_audio_configure()` has not been called first.
+GPIO16/9/45/8/10, PA GPIO46 and 36 dB microphone gain (a 6 dB step of the
+ES8311). At 30 dB a voice memo peaked around -33 dBFS, well below the same
+device's synthesized playback; 42 dB closed the gap but also lifted the analog
+interference that scales with that gain and left no headroom for the start-up
+transient, so the board uses 36 dB and the recorder supplies the remaining
+level digitally. The PCM format, volume, mute and target PA state are passed
+in by the upper-layer runtime product configuration. After
+`board_audio_init()` completes the PA stays off; `bsp_audio_start()` returns
+`ESP_ERR_INVALID_STATE` when `bsp_audio_configure()` has not been called first.
 
 Display transport configuration is a board-level profile and is not overridden
 through Kconfig. The current Waveshare backend is fixed at 368 x 448 RGB565,

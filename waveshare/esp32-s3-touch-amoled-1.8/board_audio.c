@@ -22,7 +22,18 @@
 #define BOARD_AUDIO_I2S_DOUT_GPIO (GPIO_NUM_8)
 #define BOARD_AUDIO_I2S_DIN_GPIO (GPIO_NUM_10)
 #define BOARD_AUDIO_PA_GPIO (GPIO_NUM_46)
-#define BOARD_AUDIO_MIC_GAIN_DB (30)
+/*
+ * ES8311 capture PGA, in its 6 dB steps.
+ *
+ * A voice memo recorded at arm's length measured -33 dBFS peak with 30 dB. The
+ * full 42 dB was tried first: it closed the gap but also lifted an analog
+ * interference product that scales with this gain, and the capture path then
+ * ran out of headroom at the start transient. 36 dB plus a modest digital trim
+ * in the recorder keeps the noise contribution 6 dB lower for the same
+ * perceived loudness. The ADC input is a single analog microphone, so this
+ * only raises the voice, not a stereo image.
+ */
+#define BOARD_AUDIO_MIC_GAIN_DB (36)
 #define BOARD_AUDIO_I2C_PORT (0)
 #define BOARD_AUDIO_DEFAULT_MCLK_MULTIPLE (256U)
 #define BOARD_AUDIO_CODEC_PA_REVERTED (false)
