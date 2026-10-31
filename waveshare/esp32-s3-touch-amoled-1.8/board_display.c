@@ -205,7 +205,7 @@ static esp_err_t _board_lcd_bus_init(board_context_t *board)
     io_config.pclk_hz = LCD_SPI_CLOCK_HZ;
     io_config.trans_queue_depth = LCD_SPI_TRANS_QUEUE_DEPTH;
     /* LVGL draw strips and SPI DMA chunks are independently configurable.
-     * Queue depth two bounds bounce memory to two transport chunks. */
+     * The transport queue depth bounds how many chunks can own bounce memory. */
     io_config.flags.psram_dma_direct = LCD_PSRAM_DMA_DIRECT_ENABLED;
 
     if (result == ESP_OK)

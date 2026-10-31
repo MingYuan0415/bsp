@@ -59,7 +59,7 @@ DMA 已观察到顶部蓝线和 GUI 冻结，因此不再保留生产或实验�
 | SD | SDSPI 使用 SPI3，MOSI/MISO/CLK 为 GPIO1/3/2，EXIO7 经 GPIO wrapper 作为低有效 CS，默认 20 MHz | `BSP_CAPABILITY_SD`、`bsp_hal_get_sd()`；mount/unmount 和挂载状态查询 |
 | AXP2101 | EXIO5 为低有效 IRQ；轮询时读取并清除 latched status | `BSP_CAPABILITY_POWER`、`bsp_hal_get_power()`；`get_info` 和 `poll_irq` |
 | PCF85063 | EXIO3 为低有效 RTC_INT；支持重复日历 alarm、pending 查询和清除 | `BSP_CAPABILITY_RTC`、`bsp_hal_get_rtc()`；`alarm_configure/disable/get_status/clear/poll_interrupt` |
-| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿，板级 profile 固定关闭。非 TE 路径下 BSP 将单次 SPI DMA 分块限制为 10 行（7,360 B），传输队列深度为 2，因此内部 DMA bounce 峰值限制为 14,720 B；非 TE 不启用 PSRAM 直 DMA。绘制缓冲尺寸与渲染条带策略属于显示 adapter 消费者 | `bsp_display_port_t.transport` 导出 QSPI、40 MHz、4 data lines、16 bpp、传输和 DMA 行数；`te` 仅导出同步状态、GPIO 与边沿 |
+| AMOLED TE | 面板 TE 连接 GPIO13，但当前真机未检测到有效边沿，板级 profile 固定关闭。非 TE 路径下 BSP 将单次 SPI DMA 分块限制为 5 行（3,680 B），传输队列深度为 1，因此内部 DMA bounce 峰值限制为 3,680 B；非 TE 不启用 PSRAM 直 DMA。绘制缓冲尺寸与渲染条带策略属于显示 adapter 消费者 | `bsp_display_port_t.transport` 导出 QSPI、40 MHz、4 data lines、16 bpp、传输和 DMA 行数；`te` 仅导出同步状态、GPIO 与边沿 |
 
 AXP2101 默认 profile 与原理图一致：DCDC1/2/3/4 为 3.3/0.9/1.2/1.8 V，DCDC5 关闭；ALDO1/2/3/4 为 3.3/3.3/3.0/1.8 V；BLDO1/2 为 1.2/2.8 V；CPUSLDO 为 1.2 V；DLDO1/2 关闭。充电参数为预充 50 mA、恒流 200 mA、终止 25 mA、目标 4.1 V，并启用电池检测、Gauge、主电池充电以及电池/VBUS/电源键/充电状态 IRQ。
 

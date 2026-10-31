@@ -6,9 +6,9 @@
 #define BOARD_LCD_SPI_CLOCK_HZ              (40000000U)
 #define BOARD_LCD_SPI_DATA_LINES            (4U)
 #define BOARD_LCD_BITS_PER_PIXEL            (16U)
-#define BOARD_LCD_SPI_MAX_TRANSFER_LINES    (10U)
+#define BOARD_LCD_SPI_MAX_TRANSFER_LINES    (5U)
 #define BOARD_LCD_DMA_MAX_FULL_LINES        (44U)
-#define BOARD_LCD_SPI_TRANS_QUEUE_DEPTH     (2U)
+#define BOARD_LCD_SPI_TRANS_QUEUE_DEPTH     (1U)
 #define BOARD_LCD_PSRAM_DMA_DIRECT          (0)
 #define BOARD_LCD_TE_SYNC                   (0)
 
