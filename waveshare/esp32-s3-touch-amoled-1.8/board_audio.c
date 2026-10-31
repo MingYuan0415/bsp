@@ -820,6 +820,7 @@ esp_err_t bsp_audio_start(void)
         &sample_info));
     if (result != ESP_OK)
     {
+        LOG_E("codec open failed: %s", esp_err_to_name(result));
         const esp_err_t cleanup_result = _release_stream_resources_locked();
         if (cleanup_result != ESP_OK)
         {
@@ -831,6 +832,7 @@ esp_err_t bsp_audio_start(void)
     result = _verify_stream_running_locked();
     if (result != ESP_OK)
     {
+        LOG_E("I2S stream verify failed: %s", esp_err_to_name(result));
         const esp_err_t cleanup_result = _release_stream_resources_locked();
         if (cleanup_result != ESP_OK)
         {
@@ -844,6 +846,7 @@ esp_err_t bsp_audio_start(void)
                               (float)BOARD_AUDIO_MIC_GAIN_DB));
     if (result != ESP_OK)
     {
+        LOG_E("codec input gain failed: %s", esp_err_to_name(result));
         const esp_err_t cleanup_result = _release_stream_resources_locked();
         if (cleanup_result != ESP_OK)
         {
