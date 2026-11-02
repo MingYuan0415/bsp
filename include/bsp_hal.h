@@ -19,6 +19,7 @@ typedef enum bsp_display_transport_kind
 {
     BSP_DISPLAY_TRANSPORT_UNKNOWN = 0,
     BSP_DISPLAY_TRANSPORT_QSPI,
+    BSP_DISPLAY_TRANSPORT_SPI,
 } bsp_display_transport_kind_t;
 
 /** @brief Board-owned display transport profile. */

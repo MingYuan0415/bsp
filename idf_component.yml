@@ -2,7 +2,17 @@ version: "0.1.0"
 description: "BSP hardware abstraction layer for microtech"
 dependencies:
   idf: ">=5.0"
-  espressif/esp_io_expander: "1.2.1"
-  espressif/esp_lcd_sh8601: "2.0.1~1"
+  espressif/esp_io_expander:
+    version: "1.2.1"
+    rules:
+      - if: "target == esp32s3"
+  espressif/esp_lcd_sh8601:
+    version: "2.0.1~1"
+    rules:
+      - if: "target == esp32s3"
+  espressif/esp_lcd_st7796:
+    version: "^1.5.0"
+    rules:
+      - if: "target == esp32p4"
   esp_lcd_touch_ft5x06: "1.1.1"
   espressif/esp_codec_dev: "1.6.2"

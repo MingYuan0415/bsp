@@ -461,6 +461,7 @@ void mt_axp2101_profile_init_default(mt_axp2101_profile_t *profile)
     }
 
     *profile = {};
+    profile->apply_rails = true;
     profile->rails[MT_AXP2101_RAIL_DCDC1] = {true, 3300};
     profile->rails[MT_AXP2101_RAIL_DCDC2] = {true, 900};
     profile->rails[MT_AXP2101_RAIL_DCDC3] = {true, 1200};
@@ -743,14 +744,17 @@ esp_err_t mt_axp2101_apply_profile(mt_axp2101_t *device,
     xSemaphoreTake(device->lock, portMAX_DELAY);
     esp_err_t result = ESP_OK;
     device->last_io_error = ESP_OK;
-    for (int rail = 0; rail < MT_AXP2101_RAIL_COUNT; ++rail)
+    if (profile->apply_rails)
     {
-        result = _mt_axp2101_apply_rail(device,
-                                        (mt_axp2101_rail_t)rail,
-                                        &profile->rails[rail]);
-        if (result != ESP_OK)
+        for (int rail = 0; rail < MT_AXP2101_RAIL_COUNT; ++rail)
         {
-            goto exit;
+            result = _mt_axp2101_apply_rail(device,
+                                            (mt_axp2101_rail_t)rail,
+                                            &profile->rails[rail]);
+            if (result != ESP_OK)
+            {
+                goto exit;
+            }
         }
     }
     result = _mt_axp2101_set_precharge_current(device,

@@ -3,10 +3,13 @@
 # MicroTech BSP
 
 This repository is the ESP-IDF board support component for MicroTech and
-currently supports only **Waveshare ESP32-S3-Touch-AMOLED-1.8**. It provides a
-unified HAL for the 368 x 448 SH8601 QSPI AMOLED, FT5x06 touch, HOME/POWER
-buttons, TCA9554 expander, PCF85063 RTC, AXP2101 PMU, QMI8658C IMU,
-ES8311/NS4150B audio and removable SD storage.
+supports **Waveshare ESP32-S3-Touch-AMOLED-1.8** and **Waveshare
+ESP32-P4-WIFI6-Touch-LCD-3.5**. The S3 backend provides the full HAL for the
+368 x 448 SH8601 QSPI AMOLED, FT5x06 touch, HOME/POWER buttons, TCA9554
+expander, PCF85063 RTC, AXP2101 PMU, QMI8658C IMU, ES8311/NS4150B audio and
+removable SD storage. The P4 backend provides the 320 x 480 ST7796 SPI display,
+FT6336 touch, HOME/POWER keys, AXP2101 power telemetry, ES8311/NS4150B audio
+and SDMMC storage; its hosted C6 radio path is tracked separately.
 
 ## Directory Layout
 
@@ -17,6 +20,8 @@ ES8311/NS4150B audio and removable SD storage.
 - `src/`: board-agnostic transactional HAL registry.
 - `waveshare/esp32-s3-touch-amoled-1.8/`: board pins, driver wrappers and
   resource init/rollback implementation.
+- `waveshare/esp32-p4-wifi6-touch-lcd-3.5/`: ESP32-P4 pins, ST7796 SPI display,
+  FT6336 touch, key input, AXP2101 power, ES8311 audio and SDMMC storage.
 - `tests/host/`: display, PMU, RTC, IMU, audio and SDSPI focused tests that
   need no hardware.
 - `XPowersLib/src/`: pinned snapshot of the third-party PMU library.
@@ -30,23 +35,24 @@ The component requires ESP-IDF 5.0 or later. Add this directory to
 set(EXTRA_COMPONENT_DIRS layers/bsp)
 ```
 
-`idf_component.yml` resolves `esp_io_expander`, `esp_lcd_sh8601`,
-`esp_lcd_touch_ft5x06` and `esp_codec_dev`, and the consuming project must also
-provide the local `mt_log` component. The selected board enables
+`idf_component.yml` resolves `esp_io_expander` and `esp_lcd_sh8601` for the
+ESP32-S3 board and `esp_lcd_st7796` for the ESP32-P4 board; `esp_lcd_touch_ft5x06`
+and `esp_codec_dev` are shared. The consuming project must also provide the
+local `mt_log` component. The S3 board enables
 `IO_EXPANDER_ENABLE_GPIO_API_WRAPPER` so SDSPI can map EXIO7 to a virtual CS
-GPIO. Configure and build:
+GPIO. Configure and build one target at a time:
 
 ```sh
-idf.py set-target esp32s3
+idf.py set-target esp32s3   # or esp32p4
 idf.py menuconfig  # MicroTech Project Config -> Development Board
 idf.py build
 ```
 
-The only current board type is the default entry and is selectable only under
-`IDF_TARGET_ESP32S3`.
+The board type is restricted to its matching `IDF_TARGET`; an unregistered
+target stops configuration.
 
-Audio wiring and calibration are board-level facts: fixed I2S0,
-GPIO16/9/45/8/10, PA GPIO46 and 36 dB microphone gain (a 6 dB step of the
+On the ESP32-S3 board, audio wiring and calibration are board-level facts:
+fixed I2S0, GPIO16/9/45/8/10, PA GPIO46 and 36 dB microphone gain (a 6 dB step of the
 ES8311). At 30 dB a voice memo peaked around -33 dBFS, well below the same
 device's synthesized playback; 42 dB closed the gap but also lifted the analog
 interference that scales with that gain and left no headroom for the start-up
@@ -57,13 +63,38 @@ in by the upper-layer runtime product configuration. After
 `ESP_ERR_INVALID_STATE` when `bsp_audio_configure()` has not been called first.
 
 Display transport configuration is a board-level profile and is not overridden
-through Kconfig. The current Waveshare backend is fixed at 368 x 448 RGB565,
+through Kconfig. The S3 Waveshare backend is fixed at 368 x 448 RGB565,
 40 MHz QSPI, a 10-line logical transfer, a 44-line physical DMA limit and queue
 depth 2, with PSRAM Direct DMA and TE sync disabled. 40 MHz is an empirical
 project value, not a rate guaranteed by SH8601A preliminary Table 14; the
 existing 80 MHz comparison showed insufficient benefit. Under ESP-IDF 6.1,
 enabling non-TE Direct DMA has been observed to cause a blue line at the top and
-GUI freeze, so no production or experimental entry point is kept.
+GUI freeze, so no production or experimental entry point is kept. The P4
+backend is fixed at 320 x 480 RGB565, 80 MHz 4-wire SPI, a 20-line transfer and
+DMA limit, queue depth 2, and PSRAM Direct DMA and TE disabled; 80 MHz is the
+vendor reference clock and is verified on hardware before enabling PSRAM Direct
+DMA.
+
+## ESP32-P4 board
+
+The ESP32-P4-WIFI6-Touch-LCD-3.5 backend owns the display, touch, key input
+and AXP2101 power telemetry:
+
+| Function | Wiring and behavior | HAL/API |
+| --- | --- | --- |
+| ST7796 | 320 x 480 RGB565 over SPI2 at 80 MHz; MOSI GPIO20, SCLK GPIO21, CS GPIO23, DC GPIO26, RST GPIO27, backlight GPIO28 (LEDC, 10-bit/5 kHz). The panel is initialized hidden and shown by the first `resume_commit`. The panel IO splits a strip into 20-row DMA chunks with queue depth 2 | `BSP_CAPABILITY_DISPLAY`; `bsp_display_port_t.transport` exports SPI, 80 MHz, 1 data line, 20-line transfer/DMA limits and queue 2 |
+| FT6336 | I2C SCL GPIO8 / SDA GPIO7 at 400 kHz, reset GPIO29, interrupt GPIO50; the interrupt stays disabled until the first visible frame | `BSP_CAPABILITY_TOUCH`; `bsp_display_get_port()->touch` |
+| Keys | HOME on GPIO35 and POWER on GPIO49, both active low; 20 ms sampling, 3-sample debounce, 1 s long press | `BSP_CAPABILITY_INPUT`; `bsp_hal_get_input()` |
+| AXP2101 | I2C address `0x34` on SCL8/SDA7 at 400 kHz. The boot rails already power the SoC, C6 and panel, so the board profile leaves the rail table untouched and only configures the charger (50/200/25 mA, 4.1 V), battery detection, fuel gauge and the IRQ mask. The AXP IRQ is not routed to the P4; status bits are polled over I2C | `BSP_CAPABILITY_POWER`; `bsp_hal_get_power()`; `board_power_get_info()` / `board_power_poll_irq()` |
+| ES8311 | I2S0 with MCLK GPIO13, SCLK GPIO12, DOUT GPIO9, LRCK GPIO10, DIN GPIO11; ES8311 on the shared I2C, PA enable on GPIO53 (NS4150B), 36 dB capture PGA. 16 kHz/16-bit stereo by default; the codec is shared through `esp_codec_dev` | `BSP_CAPABILITY_AUDIO`; `bsp_hal_get_audio()` |
+| SDMMC | Slot 0, 4-bit, 20 MHz default (`max_freq_khz` up to 40 MHz); CLK GPIO43, CMD GPIO44, D0-D3 GPIO39-42; IO powered by the on-chip LDO4; no card-detect pin, the storage service mounts on demand. FATFS through VFS, formatting is opt-in | `BSP_CAPABILITY_SD`; `bsp_hal_get_sd()` |
+| Wake | GPIO35/49 are not RTC-capable and the P4 has no GPIO light-sleep wake source. `board_get_wakeup_descriptor()` reports no source, so `app_runtime` skips `system_pm_init` and keeps the app-manager screen-off path | `bsp_get_wakeup_descriptor()` |
+| Missing | No IMU or RTC capability in this backend revision; `app_runtime` already degrades when those bits are absent | capability bits |
+
+The connected ESP32-P4 is revision v1.3 (pre-3.0 silicon). The target selects
+`CONFIG_ESP32P4_SELECTS_REV_LESS_V3`, a v1.0 minimum revision and the 360 MHz
+CPU ceiling; an image built for rev >=3.0 is rejected by this chip at flash
+time. Revision <3.0 and >=3.0 are mutually exclusive in ESP-IDF.
 
 A new board type must provide its own private display profile and HAL backend,
 and restrict the board option with the corresponding `IDF_TARGET`. Component

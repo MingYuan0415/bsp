@@ -13,7 +13,6 @@ set(MT_BOARD_SOURCES
     board_display.c
     board_input.c
     board_audio.c
-    board_audio_format.c
     board_sdspi.c
     board_i2c_panel_io.c
     board_tca9554.c
@@ -21,7 +20,6 @@ set(MT_BOARD_SOURCES
     board_imu_bridge.c
     board_power.c
     board_rtc.c
-    mt_axp2101.cpp
     mt_pcf85063.c
 )
 set(MT_BOARD_PUBLIC_REQUIRES

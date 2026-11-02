@@ -4,6 +4,9 @@ function(mt_resolve_board target)
     if(target STREQUAL "esp32s3")
         set(board_manifest
             "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/waveshare/esp32-s3-touch-amoled-1.8/board.cmake")
+    elseif(target STREQUAL "esp32p4")
+        set(board_manifest
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/waveshare/esp32-p4-wifi6-touch-lcd-3.5/board.cmake")
     else()
         message(FATAL_ERROR
             "No MicroTech board backend is registered for IDF_TARGET=${target}")

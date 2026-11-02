@@ -2,7 +2,7 @@
 
 # MicroTech BSP
 
-本仓库是 MicroTech 的 ESP-IDF 板级支持组件，目前仅支持 **Waveshare ESP32-S3-Touch-AMOLED-1.8**。它为 368 x 448 SH8601 QSPI AMOLED、FT5x06 触摸、HOME/POWER 按键、TCA9554 扩展器、PCF85063 RTC、AXP2101 PMU、QMI8658C IMU、ES8311/NS4150B 音频和可移除 SD 存储提供统一 HAL。
+本仓库是 MicroTech 的 ESP-IDF 板级支持组件，支持 **Waveshare ESP32-S3-Touch-AMOLED-1.8** 和 **Waveshare ESP32-P4-WIFI6-Touch-LCD-3.5**。S3 后端为 368 x 448 SH8601 QSPI AMOLED、FT5x06 触摸、HOME/POWER 按键、TCA9554 扩展器、PCF85063 RTC、AXP2101 PMU、QMI8658C IMU、ES8311/NS4150B 音频和可移除 SD 存储提供统一 HAL。P4 后端提供 320 x 480 ST7796 SPI 显示、FT6336 触摸、HOME/POWER 按键、AXP2101 电源遥测、ES8311/NS4150B 音频和 SDMMC 存储；其 C6 hosted 无线路径另行跟踪。
 
 ## 目录结构
 
@@ -10,6 +10,7 @@
 - `include/bsp_audio.h`：ES8311/NS4150B 音频路径的板级控制 API。
 - `src/`：与具体开发板解耦的事务式 HAL 注册表。
 - `waveshare/esp32-s3-touch-amoled-1.8/`：板级引脚、驱动封装和资源初始化/回滚实现。
+- `waveshare/esp32-p4-wifi6-touch-lcd-3.5/`：ESP32-P4 引脚、ST7796 SPI 显示、FT6336 触摸、按键输入、AXP2101 电源、ES8311 音频和 SDMMC 存储。
 - `tests/host/`：不依赖真机的显示、PMU、RTC、IMU、音频和 SDSPI 聚焦测试。
 - `XPowersLib/src/`：固定版本的第三方 PMU 库快照。
 
@@ -21,17 +22,17 @@
 set(EXTRA_COMPONENT_DIRS layers/bsp)
 ```
 
-`idf_component.yml` 会解析 `esp_io_expander`、`esp_lcd_sh8601`、`esp_lcd_touch_ft5x06` 和 `esp_codec_dev`，调用工程还须提供本地 `mt_log` 组件。所选板型会启用 `IO_EXPANDER_ENABLE_GPIO_API_WRAPPER`，供 SDSPI 将 EXIO7 映射为虚拟 CS GPIO。配置并构建：
+`idf_component.yml` 为 ESP32-S3 板解析 `esp_io_expander` 和 `esp_lcd_sh8601`，为 ESP32-P4 板解析 `esp_lcd_st7796`；`esp_lcd_touch_ft5x06` 和 `esp_codec_dev` 共用。调用工程还须提供本地 `mt_log` 组件。S3 板启用 `IO_EXPANDER_ENABLE_GPIO_API_WRAPPER`，供 SDSPI 将 EXIO7 映射为虚拟 CS GPIO。一次只配置并构建一个 target：
 
 ```sh
-idf.py set-target esp32s3
+idf.py set-target esp32s3   # 或 esp32p4
 idf.py menuconfig  # MicroTech Project Config -> Development Board
 idf.py build
 ```
 
-当前唯一板型为默认项，且仅在 `IDF_TARGET_ESP32S3` 下可选。
+板型选项只在其匹配的 `IDF_TARGET` 下可选；未注册 target 会停止配置。
 
-音频接线和校准属于板级事实：固定使用 I2S0、GPIO16/9/45/8/10、PA GPIO46 和
+在 ESP32-S3 板上，音频接线和校准属于板级事实：固定使用 I2S0、GPIO16/9/45/8/10、PA GPIO46 和
 36 dB 麦克风增益（ES8311 的 6 dB 步进档位）。30 dB 时实测语音峰值约 -33 dBFS，
 明显低于同机合成播放；42 dB 虽能补足电平，但会把同样随该增益放大的模拟干扰
 一并抬高并吃掉起录瞬态的余量，故取 36 dB，其余电平由录音侧的数字增益补足。
@@ -39,11 +40,33 @@ PCM 格式、音量、mute 和目标 PA 状态由上层运行时产品配置传�
 `board_audio_init()` 完成后 PA 保持关闭；未先调用 `bsp_audio_configure()` 时
 `bsp_audio_start()` 返回 `ESP_ERR_INVALID_STATE`。
 
-显示传输配置属于板级 profile，不通过 Kconfig 覆盖。当前 Waveshare 后端固定为
+显示传输配置属于板级 profile，不通过 Kconfig 覆盖。S3 Waveshare 后端固定为
 368 x 448 RGB565、40 MHz QSPI、10 行逻辑传输、44 行物理 DMA 上限、queue depth 2，
 并关闭 PSRAM Direct DMA 和 TE 同步。40 MHz 是项目经验值，并非 SH8601A preliminary
 Table 14 保证的频率；既有 80 MHz 对照收益不足。ESP-IDF 6.1 下启用非 TE Direct
-DMA 已观察到顶部蓝线和 GUI 冻结，因此不再保留生产或实验配置入口。
+DMA 已观察到顶部蓝线和 GUI 冻结，因此不再保留生产或实验配置入口。P4 后端固定为
+320 x 480 RGB565、80 MHz 4-wire SPI、20 行传输/DMA 上限、queue depth 2，并关闭
+PSRAM Direct DMA 和 TE；80 MHz 为厂商参考时钟，须在真机验证后再启用 PSRAM 直 DMA。
+
+## ESP32-P4 板型
+
+ESP32-P4-WIFI6-Touch-LCD-3.5 后端持有显示、触摸、按键输入和 AXP2101 电源遥测：
+
+| 功能 | 接线与行为 | HAL/API |
+| --- | --- | --- |
+| ST7796 | 320 x 480 RGB565，SPI2 80 MHz；MOSI GPIO20、SCLK GPIO21、CS GPIO23、DC GPIO26、RST GPIO27、背光 GPIO28（LEDC，10-bit/5 kHz）。面板初始化后保持隐藏，首次 `resume_commit` 才显示。panel IO 将一次条带拆成 20 行 DMA 块，queue depth 2 | `BSP_CAPABILITY_DISPLAY`；`bsp_display_port_t.transport` 导出 SPI、80 MHz、1 data line、20 行传输/DMA 上限和 queue 2 |
+| FT6336 | I2C SCL GPIO8 / SDA GPIO7、400 kHz，复位 GPIO29，中断 GPIO50；首个可见帧前保持中断关闭 | `BSP_CAPABILITY_TOUCH`；`bsp_display_get_port()->touch` |
+| 按键 | HOME=GPIO35、POWER=GPIO49，均低有效；20 ms 采样、3 次消抖、1 s 长按 | `BSP_CAPABILITY_INPUT`；`bsp_hal_get_input()` |
+| AXP2101 | I2C 地址 `0x34`，SCL8/SDA7、400 kHz。启动轨已为 SoC、C6 和面板供电，因此板级 profile 不重编程轨表，只配置充电（50/200/25 mA、4.1 V）、电池检测、电量计和 IRQ mask。AXP IRQ 未接 P4，状态位通过 I2C 轮询 | `BSP_CAPABILITY_POWER`；`bsp_hal_get_power()`；`board_power_get_info()` / `board_power_poll_irq()` |
+| ES8311 | I2S0：MCLK GPIO13、SCLK GPIO12、DOUT GPIO9、LRCK GPIO10、DIN GPIO11；ES8311 挂在共享 I2C，PA 使能 GPIO53（NS4150B），采集 PGA 36 dB。默认 16 kHz/16-bit 立体声；通过 `esp_codec_dev` 共享 | `BSP_CAPABILITY_AUDIO`；`bsp_hal_get_audio()` |
+| SDMMC | Slot 0、4-bit，默认 20 MHz（`max_freq_khz` 最高 40 MHz）；CLK GPIO43、CMD GPIO44、D0-D3 GPIO39-42；IO 由片内 LDO4 供电；无卡检测脚，由存储服务按需挂载。FATFS 通过 VFS，格式化需显式开启 | `BSP_CAPABILITY_SD`；`bsp_hal_get_sd()` |
+| 唤醒 | GPIO35/49 不是 RTC IO，且 P4 无 GPIO light-sleep 唤醒源。`board_get_wakeup_descriptor()` 返回空，`app_runtime` 跳过 `system_pm_init`，保留 app-manager 的息屏路径 | `bsp_get_wakeup_descriptor()` |
+| 缺失 | 本后端版本无 IMU 和 RTC 能力；`app_runtime` 在能力位缺失时已能降级 | 能力位 |
+
+板载 ESP32-P4 为 revision v1.3（3.0 之前硅片）。target 选择
+`CONFIG_ESP32P4_SELECTS_REV_LESS_V3`、最低 v1.0 revision 和 360 MHz CPU 上限；
+按 rev >=3.0 构建的镜像会在该芯片上被拒绝烧录。ESP-IDF 中 rev <3.0 与
+rev >=3.0 互斥。
 
 新增板型必须提供独立的私有 display profile 和 HAL backend，并以对应 `IDF_TARGET`
 限制板型选项。组件依赖只能按 target 或 manifest rule 选择，不能通过

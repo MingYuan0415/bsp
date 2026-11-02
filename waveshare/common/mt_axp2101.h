@@ -77,6 +77,10 @@ typedef struct mt_axp2101_rail_config
  */
 typedef struct mt_axp2101_profile
 {
+    /* Program the rail table. False leaves the AXP2101 boot rails untouched
+     * (the ESP32-P4 board relies on the AXP defaults) while the charger, fuel
+     * gauge and IRQ configuration below still apply. */
+    bool apply_rails;
     mt_axp2101_rail_config_t rails[MT_AXP2101_RAIL_COUNT];
     uint16_t precharge_current_ma; /**< Supported values: 0, 25, 50, 75 mA. */
     uint16_t charge_current_ma;

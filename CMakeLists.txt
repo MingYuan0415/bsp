@@ -1,5 +1,6 @@
 set(BOARD_ROOT ${CMAKE_CURRENT_LIST_DIR})
 set(XPOWERSLIB_ROOT ${CMAKE_CURRENT_LIST_DIR}/XPowersLib)
+set(BOARD_COMMON_PATH ${BOARD_ROOT}/waveshare/common)
 
 include(${BOARD_ROOT}/boards.cmake)
 mt_resolve_board("${IDF_TARGET}")
@@ -11,6 +12,8 @@ if(NOT EXISTS "${BOARD_PATH}/${MT_BOARD_DISPLAY_PROFILE}")
 endif()
 set(BOARD_SOURCES
     "src/bsp_hal.c"
+    "${BOARD_COMMON_PATH}/mt_axp2101.cpp"
+    "${BOARD_COMMON_PATH}/board_audio_format.c"
     "${XPOWERSLIB_ROOT}/src/XPowersLibInterface.cpp"
 )
 foreach(board_source IN LISTS MT_BOARD_SOURCES)
@@ -22,6 +25,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS
         ${BOARD_PATH}
+        ${BOARD_COMMON_PATH}
     REQUIRES ${MT_BOARD_PUBLIC_REQUIRES}
     PRIV_REQUIRES ${MT_BOARD_PRIVATE_REQUIRES}
 )

@@ -9,6 +9,10 @@ menu "MicroTech Project Config"
             depends on IDF_TARGET_ESP32S3
             select IO_EXPANDER_ENABLE_GPIO_API_WRAPPER
             select XPOWERS_ESP_IDF_NEW_API
+        config BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_5
+            bool "Waveshare ESP32-P4-WIFI6-Touch-LCD-3.5"
+            depends on IDF_TARGET_ESP32P4
+            select XPOWERS_ESP_IDF_NEW_API
     endchoice
 
     config XPOWERS_ESP_IDF_NEW_API

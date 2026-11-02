@@ -3,6 +3,10 @@ project(bsp_host_tests LANGUAGES C CXX)
 
 enable_testing()
 
+# Board headers (for example board_power.h) include shared waveshare/common
+# drivers such as mt_axp2101.h; every board test sees them.
+include_directories(../../waveshare/common)
+
 set(BSP_SANITIZER "none" CACHE STRING
     "Host-test sanitizer: none, address, or thread")
 set_property(CACHE BSP_SANITIZER PROPERTY STRINGS none address thread)
@@ -10,7 +14,7 @@ set_property(CACHE BSP_SANITIZER PROPERTY STRINGS none address thread)
 add_executable(xpowers_behavior_test
     xpowers_behavior_test.cpp
     ../../waveshare/esp32-s3-touch-amoled-1.8/board_power.c
-    ../../waveshare/esp32-s3-touch-amoled-1.8/mt_axp2101.cpp
+    ../../waveshare/common/mt_axp2101.cpp
     ../../XPowersLib/src/XPowersLibInterface.cpp
 )
 
@@ -19,6 +23,7 @@ target_include_directories(xpowers_behavior_test PRIVATE
     fakes
     ../../include
     ../../waveshare/esp32-s3-touch-amoled-1.8
+    ../../waveshare/common
 )
 
 target_include_directories(xpowers_behavior_test SYSTEM PRIVATE
@@ -181,7 +186,7 @@ add_test(NAME board_rtc_alarm_test COMMAND board_rtc_alarm_test)
 
 add_executable(board_audio_format_test
     board_audio_format_test.c
-    ../../waveshare/esp32-s3-touch-amoled-1.8/board_audio_format.c
+    ../../waveshare/common/board_audio_format.c
 )
 
 target_include_directories(board_audio_format_test PRIVATE
@@ -223,7 +228,7 @@ add_executable(board_audio_lifecycle_test
     board_audio_lifecycle_test.c
     audio_fakes/board_audio_fakes.c
     ../../waveshare/esp32-s3-touch-amoled-1.8/board_audio.c
-    ../../waveshare/esp32-s3-touch-amoled-1.8/board_audio_format.c
+    ../../waveshare/common/board_audio_format.c
 )
 
 target_include_directories(board_audio_lifecycle_test PRIVATE
