@@ -2,7 +2,7 @@
 
 # MicroTech BSP
 
-本仓库是 MicroTech 的 ESP-IDF 板级支持组件，支持 **Waveshare ESP32-S3-Touch-AMOLED-1.8** 和 **Waveshare ESP32-P4-WIFI6-Touch-LCD-3.5**。S3 后端为 368 x 448 SH8601 QSPI AMOLED、FT5x06 触摸、HOME/POWER 按键、TCA9554 扩展器、PCF85063 RTC、AXP2101 PMU、QMI8658C IMU、ES8311/NS4150B 音频和可移除 SD 存储提供统一 HAL。P4 后端提供 320 x 480 ST7796 SPI 显示、FT6336 触摸、HOME/POWER 按键、AXP2101 电源遥测、ES8311/NS4150B 音频和 SDMMC 存储；其 C6 hosted 无线路径另行跟踪。
+本仓库是 MicroTech 的 ESP-IDF 板级支持组件，支持 **Waveshare ESP32-S3-Touch-AMOLED-1.8** 和 **Waveshare ESP32-P4-WIFI6-Touch-LCD-3.5**。S3 后端为 368 x 448 SH8601 QSPI AMOLED、FT5x06 触摸、HOME/POWER 按键、TCA9554 扩展器、PCF85063 RTC、AXP2101 PMU、QMI8658C IMU、ES8311/NS4150B 音频和可移除 SD 存储提供统一 HAL。P4 后端提供 320 x 480 ST7796 SPI 显示、FT6336 触摸、HOME/POWER 按键、AXP2101 电源遥测、ES8311/NS4150B 音频和 SDMMC 存储；无线不属本组件：P4 版型经板载 ESP32-C6 的 ESP-Hosted SDIO 链路使用 Wi-Fi 与 BLE，由根工程配置并初始化。
 
 ## 目录结构
 

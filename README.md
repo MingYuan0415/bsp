@@ -9,7 +9,9 @@ ESP32-P4-WIFI6-Touch-LCD-3.5**. The S3 backend provides the full HAL for the
 expander, PCF85063 RTC, AXP2101 PMU, QMI8658C IMU, ES8311/NS4150B audio and
 removable SD storage. The P4 backend provides the 320 x 480 ST7796 SPI display,
 FT6336 touch, HOME/POWER keys, AXP2101 power telemetry, ES8311/NS4150B audio
-and SDMMC storage; its hosted C6 radio path is tracked separately.
+and SDMMC storage. The radio is not part of this component: the P4 board
+reaches Wi-Fi and BLE through the on-board ESP32-C6 over ESP-Hosted SDIO, which
+the root project configures and initializes.
 
 ## Directory Layout
 
