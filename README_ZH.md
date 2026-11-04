@@ -72,8 +72,11 @@ ESP32-P4-WIFI6-Touch-LCD-3.5 后端持有显示、触摸、按键输入和 AXP21
 rev >=3.0 互斥。
 
 新增板型必须提供独立的私有 display profile 和 HAL backend，并以对应 `IDF_TARGET`
-限制板型选项。其 `board.cmake` 还必须声明 `MT_BOARD_DEFAULT_PRODUCT` 和
-`MT_BOARD_DOCUMENTS`，并提供记录官方资料来源的 `docs/documents.yaml`。组件依赖只能按
+限制板型选项。其 `board.cmake` 还必须声明 `MT_BOARD_DEFAULT_PRODUCT`、
+`MT_BOARD_DOCUMENTS`、`MT_BOARD_DEVICE_PANEL`、`MT_BOARD_DEVICE_PLATFORM`、
+`MT_BOARD_SYSTEM_PM_SUPPORTED`、`MT_BOARD_HOSTED_RADIO` 和
+`MT_BOARD_RADIO_SUPPORTED`，并提供记录官方资料来源的
+`docs/documents.yaml`。组件依赖只能按
 target 或 manifest rule 选择，不能通过 `CONFIG_BOARD_TYPE_*` 改变
 `REQUIRES`/`PRIV_REQUIRES`。未注册 target 必须停止配置，不得回退到本板后端。
 

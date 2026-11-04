@@ -107,9 +107,11 @@ time. Revision <3.0 and >=3.0 are mutually exclusive in ESP-IDF.
 
 A new board type must provide its own private display profile and HAL backend,
 and restrict the board option with the corresponding `IDF_TARGET`. Its
-`board.cmake` must also name `MT_BOARD_DEFAULT_PRODUCT` and
-`MT_BOARD_DOCUMENTS`, and a matching `docs/documents.yaml` must record the
-official document sources. Component dependencies may only be selected per
+`board.cmake` must also name `MT_BOARD_DEFAULT_PRODUCT`,
+`MT_BOARD_DOCUMENTS`, `MT_BOARD_DEVICE_PANEL`, `MT_BOARD_DEVICE_PLATFORM`,
+`MT_BOARD_SYSTEM_PM_SUPPORTED`, `MT_BOARD_HOSTED_RADIO` and
+`MT_BOARD_RADIO_SUPPORTED`, and a matching `docs/documents.yaml` must record
+the official document sources. Component dependencies may only be selected per
 target or by manifest rule; `REQUIRES`/`PRIV_REQUIRES` must not be changed
 through `CONFIG_BOARD_TYPE_*`. An unregistered target must stop configuration
 and must not fall back to this board's backend.

@@ -10,8 +10,8 @@ documents:
     redistribution: link-only
     scope: [board]
   - id: waveshare-board-schematic
-    title: "ESP32-S3-Touch-AMOLED-1.8 schematic"
-    revision: "vendor current revision; verify against board"
+    title: "ESP32-S3-Touch-AMOLED-1.8 schematic and peripheral documents index"
+    revision: "official resources index; verify the linked schematic revision"
     url: "https://docs.waveshare.net/ESP32-S3-Touch-AMOLED-1.8/Resources-And-Documents"
     retrieved: "2026-11-04"
     sha256: "N/A"
