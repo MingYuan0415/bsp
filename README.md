@@ -24,6 +24,10 @@ the root project configures and initializes.
   resource init/rollback implementation.
 - `waveshare/esp32-p4-wifi6-touch-lcd-3.5/`: ESP32-P4 pins, ST7796 SPI display,
   FT6336 touch, key input, AXP2101 power, ES8311 audio and SDMMC storage.
+- `waveshare/<board>/docs/documents.yaml`: the board's official document
+  registry (source URL, revision, retrieval date, scope and redistribution
+  state). PDFs are `link-only` by default; legally obtained local copies live
+  under `docs-local/`, which is ignored by Git.
 - `tests/host/`: display, PMU, RTC, IMU, audio and SDSPI focused tests that
   need no hardware.
 - `XPowersLib/src/`: pinned snapshot of the third-party PMU library.
@@ -46,10 +50,13 @@ GPIO. Configure and build one target at a time:
 
 ```sh
 idf.py set-target esp32s3   # or esp32p4
-idf.py menuconfig  # MicroTech Project Config -> Development Board
-idf.py build
+idf.py -DMT_BOARD=waveshare_esp32_s3_touch_amoled_1_8 \
+       -DMT_PRODUCT=s3_reference build
 ```
 
+`MT_BOARD` may be omitted while a target has exactly one registered backend;
+`MT_PRODUCT` may be omitted to use the board's `MT_BOARD_DEFAULT_PRODUCT`.
+Selecting a second board on the same SoC requires an explicit `MT_BOARD`.
 The board type is restricted to its matching `IDF_TARGET`; an unregistered
 target stops configuration.
 
@@ -99,11 +106,13 @@ CPU ceiling; an image built for rev >=3.0 is rejected by this chip at flash
 time. Revision <3.0 and >=3.0 are mutually exclusive in ESP-IDF.
 
 A new board type must provide its own private display profile and HAL backend,
-and restrict the board option with the corresponding `IDF_TARGET`. Component
-dependencies may only be selected per target or by manifest rule;
-`REQUIRES`/`PRIV_REQUIRES` must not be changed through `CONFIG_BOARD_TYPE_*`. An
-unregistered target must stop configuration and must not fall back to this
-board's backend.
+and restrict the board option with the corresponding `IDF_TARGET`. Its
+`board.cmake` must also name `MT_BOARD_DEFAULT_PRODUCT` and
+`MT_BOARD_DOCUMENTS`, and a matching `docs/documents.yaml` must record the
+official document sources. Component dependencies may only be selected per
+target or by manifest rule; `REQUIRES`/`PRIV_REQUIRES` must not be changed
+through `CONFIG_BOARD_TYPE_*`. An unregistered target must stop configuration
+and must not fall back to this board's backend.
 
 ## Hardware Adaptation
 

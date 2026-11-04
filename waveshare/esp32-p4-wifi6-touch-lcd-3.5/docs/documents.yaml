@@ -1,0 +1,35 @@
+schema_version: 1
+board: waveshare_esp32_p4_wifi6_touch_lcd_3_5
+documents:
+  - id: waveshare-board-resources
+    title: "Waveshare ESP32-P4-WIFI6-Touch-LCD-3.5 Resources and Documents"
+    revision: "official resources index"
+    url: "https://docs.waveshare.com/ESP32-P4-WIFI6-Touch-LCD-3.5/Resources-And-Documents"
+    retrieved: "2026-11-04"
+    sha256: "N/A"
+    redistribution: link-only
+    scope: [board]
+  - id: waveshare-board-schematic
+    title: "ESP32-P4-WIFI6-Touch-LCD-3.5 schematic"
+    revision: "vendor current revision; verify against board"
+    url: "https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-3.5/raw/main/schematic/ESP32-P4-WIFI6-Touch-LCD-3.5-schematic.pdf"
+    retrieved: "2026-11-04"
+    sha256: "N/A"
+    redistribution: link-only
+    scope: [board, display, touch, power, audio, storage, radio]
+  - id: esp32-p4-datasheet
+    title: "ESP32-P4 Series Datasheet"
+    revision: "Espressif official current revision"
+    url: "https://documentation.espressif.com/esp32-p4_datasheet_en.pdf"
+    retrieved: "2026-11-04"
+    sha256: "N/A"
+    redistribution: link-only
+    scope: [soc]
+  - id: esp32-p4-trm
+    title: "ESP32-P4 Technical Reference Manual"
+    revision: "Espressif official current revision"
+    url: "https://documentation.espressif.com/esp32-p4_technical_reference_manual_en.pdf"
+    retrieved: "2026-11-04"
+    sha256: "N/A"
+    redistribution: link-only
+    scope: [soc]

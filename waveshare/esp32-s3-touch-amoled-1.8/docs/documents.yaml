@@ -1,0 +1,35 @@
+schema_version: 1
+board: waveshare_esp32_s3_touch_amoled_1_8
+documents:
+  - id: waveshare-board-resources
+    title: "Waveshare ESP32-S3-Touch-AMOLED-1.8 Resources and Documents"
+    revision: "official resources index"
+    url: "https://docs.waveshare.net/ESP32-S3-Touch-AMOLED-1.8/Resources-And-Documents"
+    retrieved: "2026-11-04"
+    sha256: "N/A"
+    redistribution: link-only
+    scope: [board]
+  - id: waveshare-board-schematic
+    title: "ESP32-S3-Touch-AMOLED-1.8 schematic"
+    revision: "vendor current revision; verify against board"
+    url: "https://docs.waveshare.net/ESP32-S3-Touch-AMOLED-1.8/Resources-And-Documents"
+    retrieved: "2026-11-04"
+    sha256: "N/A"
+    redistribution: link-only
+    scope: [board, display, touch, power, audio, imu, rtc, storage]
+  - id: esp32-s3-datasheet
+    title: "ESP32-S3 Series Datasheet"
+    revision: "Espressif official current revision"
+    url: "https://documentation.espressif.com/esp32-s3_datasheet_en.pdf"
+    retrieved: "2026-11-04"
+    sha256: "N/A"
+    redistribution: link-only
+    scope: [soc]
+  - id: esp32-s3-trm
+    title: "ESP32-S3 Technical Reference Manual"
+    revision: "Espressif official current revision"
+    url: "https://documentation.espressif.com/esp32-s3_technical_reference_manual_en.pdf"
+    retrieved: "2026-11-04"
+    sha256: "N/A"
+    redistribution: link-only
+    scope: [soc]

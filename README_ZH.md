@@ -11,6 +11,7 @@
 - `src/`：与具体开发板解耦的事务式 HAL 注册表。
 - `waveshare/esp32-s3-touch-amoled-1.8/`：板级引脚、驱动封装和资源初始化/回滚实现。
 - `waveshare/esp32-p4-wifi6-touch-lcd-3.5/`：ESP32-P4 引脚、ST7796 SPI 显示、FT6336 触摸、按键输入、AXP2101 电源、ES8311 音频和 SDMMC 存储。
+- `waveshare/<board>/docs/documents.yaml`：板卡官方资料登记表（来源 URL、版本、获取日期、适用范围和再分发状态）。PDF 默认 `link-only`；合法获取的本地副本放在被 Git 忽略的 `docs-local/`。
 - `tests/host/`：不依赖真机的显示、PMU、RTC、IMU、音频和 SDSPI 聚焦测试。
 - `XPowersLib/src/`：固定版本的第三方 PMU 库快照。
 
@@ -26,11 +27,13 @@ set(EXTRA_COMPONENT_DIRS layers/bsp)
 
 ```sh
 idf.py set-target esp32s3   # 或 esp32p4
-idf.py menuconfig  # MicroTech Project Config -> Development Board
-idf.py build
+idf.py -DMT_BOARD=waveshare_esp32_s3_touch_amoled_1_8 \
+       -DMT_PRODUCT=s3_reference build
 ```
 
-板型选项只在其匹配的 `IDF_TARGET` 下可选；未注册 target 会停止配置。
+当一个 target 只有一个已注册后端时可省略 `MT_BOARD`；省略 `MT_PRODUCT` 时使用板卡的
+`MT_BOARD_DEFAULT_PRODUCT`。同一 SoC 存在第二个板型时必须显式指定 `MT_BOARD`。
+板型只在其匹配的 `IDF_TARGET` 下可选；未注册 target 会停止配置。
 
 在 ESP32-S3 板上，音频接线和校准属于板级事实：固定使用 I2S0、GPIO16/9/45/8/10、PA GPIO46 和
 36 dB 麦克风增益（ES8311 的 6 dB 步进档位）。30 dB 时实测语音峰值约 -33 dBFS，
@@ -69,9 +72,10 @@ ESP32-P4-WIFI6-Touch-LCD-3.5 后端持有显示、触摸、按键输入和 AXP21
 rev >=3.0 互斥。
 
 新增板型必须提供独立的私有 display profile 和 HAL backend，并以对应 `IDF_TARGET`
-限制板型选项。组件依赖只能按 target 或 manifest rule 选择，不能通过
-`CONFIG_BOARD_TYPE_*` 改变 `REQUIRES`/`PRIV_REQUIRES`。未注册 target 必须停止配置，
-不得回退到本板后端。
+限制板型选项。其 `board.cmake` 还必须声明 `MT_BOARD_DEFAULT_PRODUCT` 和
+`MT_BOARD_DOCUMENTS`，并提供记录官方资料来源的 `docs/documents.yaml`。组件依赖只能按
+target 或 manifest rule 选择，不能通过 `CONFIG_BOARD_TYPE_*` 改变
+`REQUIRES`/`PRIV_REQUIRES`。未注册 target 必须停止配置，不得回退到本板后端。
 
 ## 硬件适配
 

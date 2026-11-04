@@ -3,12 +3,16 @@ set(XPOWERSLIB_ROOT ${CMAKE_CURRENT_LIST_DIR}/XPowersLib)
 set(BOARD_COMMON_PATH ${BOARD_ROOT}/waveshare/common)
 
 include(${BOARD_ROOT}/boards.cmake)
-mt_resolve_board("${IDF_TARGET}")
+mt_resolve_board("${IDF_TARGET}" "${MT_BOARD}")
 
 set(BOARD_PATH ${BOARD_ROOT}/${MT_BOARD_VENDOR}/${MT_BOARD_NAME})
 if(NOT EXISTS "${BOARD_PATH}/${MT_BOARD_DISPLAY_PROFILE}")
     message(FATAL_ERROR
         "Board ${MT_BOARD_ID} lacks display profile ${MT_BOARD_DISPLAY_PROFILE}")
+endif()
+if(NOT EXISTS "${BOARD_PATH}/${MT_BOARD_DOCUMENTS}")
+    message(FATAL_ERROR
+        "Board ${MT_BOARD_ID} lacks document registry ${MT_BOARD_DOCUMENTS}")
 endif()
 set(BOARD_SOURCES
     "src/bsp_hal.c"

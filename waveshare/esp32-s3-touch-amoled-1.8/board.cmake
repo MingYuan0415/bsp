@@ -5,6 +5,8 @@ set(MT_BOARD_KCONFIG_SYMBOL
 set(MT_BOARD_VENDOR "waveshare")
 set(MT_BOARD_NAME "esp32-s3-touch-amoled-1.8")
 set(MT_BOARD_DISPLAY_PROFILE "board_display_profile.h")
+set(MT_BOARD_DEFAULT_PRODUCT "s3_reference")
+set(MT_BOARD_DOCUMENTS "docs/documents.yaml")
 set(MT_BOARD_HAL_CAPABILITIES
     display touch input rtc power imu audio sd
 )
